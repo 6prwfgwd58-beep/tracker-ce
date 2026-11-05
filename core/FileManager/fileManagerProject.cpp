@@ -142,6 +142,20 @@ bool cFileManager::loadProjectFileFormFileStruct(strMtProject* project, strProje
         projectPatchfromProjectFile[PATCH_SIZE - PROJECT_NAME_SIZE - 1] = 0;
     }
 
+    // The audio interrupt runs the sequencer on these values from the moment they are
+    // copied, before loadProjectValues() checks the project, and a tempo that is not a
+    // positive number keeps it in its tick loop for ever. Patterns are numbered from 1;
+    // pattern 0 becomes index 255 of the 255-entry pattern bitmasks.
+    strMtValues& fileValues = pFile->projectDataAndHeader.project.values;
+    if (!(fileValues.globalTempo > 0.0f && fileValues.globalTempo <= 1000.0f))
+    {
+        fileValues.globalTempo = DEFAULT_TEMPO;
+    }
+    if (fileValues.actualPattern < PATTERN_INDEX_MIN)
+    {
+        fileValues.actualPattern = PATTERN_INDEX_MIN;
+    }
+
     memcpy(&project->song, &pFile->projectDataAndHeader.project.song, sizeof(strSong));
     memcpy(&project->values, &pFile->projectDataAndHeader.project.values, sizeof(strMtValues));
     //*proj=pFile.projectDataAndHeader.project;
