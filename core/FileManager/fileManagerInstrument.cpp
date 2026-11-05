@@ -756,6 +756,10 @@ bool cFileManager::loadInstrumentFormFileStruct(strInstrument* instrument,
         versionRecovery.translateinstrument(fileVersion, INSTRUMENT_FILE_VERSION, instrumentFile);
     }
 
+    // The name is copied and printed as a string everywhere, and nothing else makes sure that
+    // the 32 bytes read from the file end in a terminator.
+    instrumentFile->instrumentDataAndHeader.instrument.sample.file_name[SAMPLE_NAME_SIZE] = 0;
+
     instrumentFileDataOffsetOut = validation.dataOffset;
 
     memcpy(instrument, &instrumentFile->instrumentDataAndHeader.instrument, sizeof(strInstrument));
