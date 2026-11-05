@@ -587,7 +587,9 @@ void AudioPlayMemory::setFineTune(int8_t value, int8_t currentNote)
     float localFinetunePitchControl = finetunePitchControl;
     const float* localNoteTable =
       (mtProject.instrument[currentInstrIdx].playMode == playModeWavetable) ? wt_notes : notes;
-    int8_t tunedNoteIdx = currentNote + currentTune;
+    // The note passed in is not the one the tune was limited against at note-on, so the sum can
+    // lie outside the note table.
+    int8_t tunedNoteIdx = clamp<int>(currentNote + currentTune, MIN_NOTE, MAX_NOTE - 1);
 
     localPitchControl -= localFinetunePitchControl;
 
@@ -902,7 +904,7 @@ void AudioPlayMemory::setTune(int8_t value, int8_t currentNote)
     if (lastNoteAndTuneIdx < 0)
         lastNoteAndTuneIdx = 0;
     else if (lastNoteAndTuneIdx >= MAX_NOTE)
-        lastNoteAndTuneIdx = MAX_NOTE;
+        lastNoteAndTuneIdx = MAX_NOTE - 1;
 
     const float* local_notes = (localPlaymode != playModeWavetable) ? notes : wt_notes;
 
