@@ -675,9 +675,12 @@ std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> AudioPlayMemory::calculateGra
   uint16_t grainLength,
   uint32_t sampleLength)
 {
+    // An empty instrument has no sample to measure the grain against.
     uint16_t granularLength =
-      ((uint32_t)((uint32_t)grainLength * (uint32_t)std::numeric_limits<uint16_t>::max())) /
-      sampleLength;
+      sampleLength > 0
+        ? ((uint32_t)((uint32_t)grainLength * (uint32_t)std::numeric_limits<uint16_t>::max())) /
+            sampleLength
+        : 0;
 
     // The loop points lie one unit inside the zone on either side. A zone of fewer than four
     // units, which is all that a short grain of a long sample comes to, leaves a loop without
