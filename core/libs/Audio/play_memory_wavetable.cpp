@@ -203,4 +203,7 @@ AUDIO_CORE_FLASH audio_block_t* AudioPlayMemory::updateWavetable()
 
         return block;
     }
+
+    release(block);
+    return nullptr;
 }
