@@ -359,6 +359,19 @@ bool cFileManager::readPatternFile(const char* filePath, Sequencer::strPattern* 
     return true;
 }
 
+// The player, the editors and the translations below index the steps of a track with its
+// length, and nothing but the size of a pattern file is checked when it is read.
+static void limitTrackLengths(Sequencer::strPattern* pattern)
+{
+    for (Sequencer::strPattern::strTrack& track : pattern->track)
+    {
+        if (track.length > Sequencer::MAXSTEP)
+        {
+            track.length = Sequencer::MAXSTEP;
+        }
+    }
+}
+
 void cFileManager::checkVersionAndTranslate(Sequencer::strPattern* pattern)
 {
 
@@ -368,6 +381,8 @@ void cFileManager::checkVersionAndTranslate(Sequencer::strPattern* pattern)
         {
             translatePatternFromFileVersion5ToFileVersion6(pattern);
         }
+
+        limitTrackLengths(pattern);
 
         if (pattern->header.fileStructureVersion[0] <= 1)
         {
@@ -393,6 +408,10 @@ void cFileManager::checkVersionAndTranslate(Sequencer::strPattern* pattern)
         {
             pattern->header.fileStructureVersion[i] = PATTERN_FILE_VERSION;
         }
+    }
+    else
+    {
+        limitTrackLengths(pattern);
     }
 
     translatePatternWithDifferentTrackCount(pattern);
