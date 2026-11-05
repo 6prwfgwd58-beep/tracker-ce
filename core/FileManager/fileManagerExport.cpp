@@ -483,7 +483,8 @@ uint32_t cFileManager::getTotalSamplesMemoryExported()
     int index = 0;
     for (index = currentInstrument; index > 0; index--)
     {
-        if (mtProject.instrument[index].isActive)
+        // After the last slot, currentInstrument is one past the array until the export ends.
+        if (index < kSampleInstrumentsCount && mtProject.instrument[index].isActive)
         {
             break;
         }
