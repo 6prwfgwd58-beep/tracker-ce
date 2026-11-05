@@ -53,6 +53,11 @@ bool cFileManager::loadProjectFileFormFileStruct(strMtProject* project, strProje
     if (pFile->projectDataAndHeader.projectHeader.type != fileTypeProject)
         return false;
 
+    // Structure versions start at 1. translateProject() calls one function per version
+    // from a table whose first entry belongs to version 1.
+    if (pFile->projectDataAndHeader.projectHeader.fileStructureVersion[0] == 0)
+        return false;
+
     uint16_t projectFileSize = pFile->projectDataAndHeader.projectHeader.size;
     if (projectFileSize < sizeof(strProjectFileHeader) + sizeof(uint32_t) ||
         projectFileSize > sizeof(strProjectFile))
