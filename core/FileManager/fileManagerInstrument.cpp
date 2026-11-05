@@ -327,8 +327,10 @@ bool cFileManager::loadSampleData(int idx,
     }
     else if (sampleLoadStep == 2) // old instrument/sample load
     {
-        loadStatus = fileTransfer.loadSampleToMemory(
-          samplePath, mtProject.instrument[idx].sample.address, currentSampleSamplesCount);
+        loadStatus = fileTransfer.loadSampleToMemory(samplePath,
+                                                     mtProject.instrument[idx].sample.address,
+                                                     mtProject.instrument[idx].sample.length,
+                                                     currentSampleSamplesCount);
     }
     else if (sampleLoadStep == 3) // save old sample type to new instrument in workspace
     {
