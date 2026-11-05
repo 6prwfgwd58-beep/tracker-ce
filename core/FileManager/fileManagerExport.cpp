@@ -37,6 +37,8 @@ void cFileManager::updateExportProjectSamples()
 
 bool cFileManager::exportSound(uint8_t mode)
 {
+    stopAutosave();
+
     if (status != fmIdle && status != fmSavingProjectToWorkspace)
         return false;
     if (currentOperation != fmNoOperation && currentOperation != fmSaveWorkspaceProject)
@@ -105,6 +107,8 @@ bool cFileManager::exportSound(uint8_t mode)
 
 bool cFileManager::exportSoundRenderSelection(char* filePath)
 {
+    stopAutosave();
+
     if (status != fmIdle && status != fmSavingProjectToWorkspace)
         return false;
     if (currentOperation != fmNoOperation && currentOperation != fmSaveWorkspaceProject)
