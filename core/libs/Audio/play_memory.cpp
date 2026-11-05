@@ -678,6 +678,16 @@ std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> AudioPlayMemory::calculateGra
     uint16_t granularLength =
       ((uint32_t)((uint32_t)grainLength * (uint32_t)std::numeric_limits<uint16_t>::max())) /
       sampleLength;
+
+    // The loop points lie one unit inside the zone on either side. A zone of fewer than four
+    // units, which is all that a short grain of a long sample comes to, leaves a loop without
+    // length or with its points swapped.
+    constexpr uint16_t kMinGranularLength = 4;
+    if (granularLength < kMinGranularLength)
+    {
+        granularLength = kMinGranularLength;
+    }
+
     int upperZoneLength = granularLength / 2 + (granularLength / 2 - std::min((int)granularPosition,
                                                                               granularLength / 2));
     int lowerZoneLength =
