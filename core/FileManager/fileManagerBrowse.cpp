@@ -440,7 +440,7 @@ void cFileManager::goUpInActualPath()
 void cFileManager::browseFirmwaresLocation()
 {
 
-    uint8_t locationFileCount = fileSystem->createFilesList(
+    int locationFileCount = fileSystem->createFilesList(
       "Firmware", 0, firmwaresList, list_length_max, 6000, fileSystem->enListFileFilter_firmware);
 
     if (locationFileCount == fileSystem->kListError)
