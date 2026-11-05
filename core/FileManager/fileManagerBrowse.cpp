@@ -451,7 +451,7 @@ void cFileManager::browseFirmwaresLocation()
 
     std::sort(firmwaresList,
               firmwaresList + locationFileCount,
-              [](char* a, char* b) { return !compareStrings(a, b); });
+              [](char* a, char* b) { return compareStrings(b, a); });
 
     firmwaresListLength = locationFileCount;
 
