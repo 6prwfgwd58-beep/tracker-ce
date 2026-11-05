@@ -66,6 +66,14 @@ void cFileManager::loadPatternFromWorkspace(uint8_t index)
                                                        sizeof(Sequencer::strPattern),
                                                        fileWholeOnce);
 
+    // A pattern is saved by removing its file and writing a new one. When power is lost in
+    // between, a file of zero length is left behind. It holds nothing, so it is loaded like
+    // a pattern without a file instead of failing the load of the whole project.
+    if (loadStatus == fileTransferEnd && fileSystem->getFileSize(patternFilename) == 0)
+    {
+        loadStatus = fileTransferFileNoExist;
+    }
+
     if (loadStatus == fileTransferEnd)
     {
         size_t fileSize = fileSystem->getFileSize(patternFilename);
