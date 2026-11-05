@@ -236,6 +236,7 @@ AUDIO_CORE_FLASH void AudioPlaySdWav::update(void)
                 for (int channelToRelease = 0; channelToRelease < channel; channelToRelease++)
                 {
                     release(block[channelToRelease]);
+                    block[channelToRelease] = NULL;
                 }
                 return;
             }
