@@ -168,7 +168,10 @@ bool cFileManager::writeProjectFileToFileStruct(strMtProject* project, strProjec
     memcpy(&pFile->projectDataAndHeader.project.song, &project->song, sizeof(strSong));
     memcpy(&pFile->projectDataAndHeader.project.values, &project->values, sizeof(strMtValues));
     strcpy(pFile->projectDataAndHeader.project.projectName, currentProjectName);
-    strcpy(pFile->projectDataAndHeader.project.projectPath, currentProjectPatch);
+    // The path of the open project can be longer than its field in the project file.
+    strncpy(pFile->projectDataAndHeader.project.projectPath,
+            currentProjectPatch,
+            PATCH_SIZE - PROJECT_NAME_SIZE - 1);
     pFile->projectDataAndHeader.project.projectName[PROJECT_NAME_SIZE - 1] = 0;
     pFile->projectDataAndHeader.project.projectPath[PATCH_SIZE - PROJECT_NAME_SIZE - 1] = 0;
 
