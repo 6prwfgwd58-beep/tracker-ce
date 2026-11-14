@@ -9,7 +9,6 @@ class SpiBus
   public:
     static constexpr int kCphaLeadingEdge = 0;
     static constexpr int kCphaTrailingEdge = 1;
-    typedef void (*DmaCompleteCallback)(void);
 
     void init(LPSPI_Type* spiBase, int pcs = 0, int cpha = kCphaLeadingEdge);
     void setSpeed(uint32_t baudRate);
@@ -25,11 +24,6 @@ class SpiBus
     bool startWriteWords(const uint32_t* data, uint32_t count);
     bool isWriteDone();
     uint32_t writeFailures = 0;
-
-    int transferDmaBuff();
-
-    void initDma(DmaCompleteCallback callback, uint8_t* data, uint32_t dataSize);
-    void stopDma();
 
   private:
     static constexpr uint32_t kDefaultBaudRate = 1000000;

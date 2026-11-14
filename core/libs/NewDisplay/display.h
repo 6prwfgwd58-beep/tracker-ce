@@ -145,22 +145,6 @@ class cDisplay
     void turnOn();
     void turnOff();
 
-    //
-    void startVideoStream();
-    void updateVideoStream(bool lastFrame);
-    void stopVideoStream();
-
-    bool showVideoStreamFrame();
-    uint16_t* getLineBuffer(int j);
-    void writeScreen(int width, int height, int stride, uint8_t* buf, uint16_t* palette16);
-    void writeLine(int width,
-                   int height,
-                   int stride,
-                   uint8_t* buf,
-                   uint8_t* palette8,
-                   uint16_t* palette16);
-    static uint16_t* getFrameBuffer(void);
-
     void setTheme(uint8_t index);
     void setCustomTheme(const Theme& customTheme);
     void setFont(uint8_t index);

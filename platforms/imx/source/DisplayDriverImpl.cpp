@@ -2,11 +2,6 @@
 #include "FT812.h"
 #include "pin_mux.h"
 
-
-uint8_t DisplayDriverImpl::streamUpdateStep = 0;
-
-void dataTransferComplite();
-
 void DisplayDriverImpl::init(SpiBus* spi)
 {
     this->spi = spi;
@@ -133,89 +128,6 @@ uint8_t DisplayDriverImpl::sendString(const char* string, uint32_t length)
 void DisplayDriverImpl::writeDataToCMD(const uint8_t* imgData, uint32_t totalDataSize)
 {
     API_LIB_WriteDataToCMD(imgData, totalDataSize);
-}
-
-//========================================================================================================
-void DisplayDriverImpl::initStreamDma(uint16_t byteResolution,
-                                      uint16_t streamWidth,
-                                      uint16_t streamHeight,
-                                      uint8_t* streamBuf,
-                                      uint32_t destMemAddress)
-{
-    setUpdateDmaStep(0);
-
-    if (streamInitialized)
-    {
-        return;
-    }
-
-    streamBufDestMemAddress = destMemAddress;
-    screenBuffSize = byteResolution * streamWidth * streamHeight;
-    screenBuff = streamBuf;
-
-    spi->initDma(dataTransferComplite, screenBuff, screenBuffSize);
-    streamInitialized = true;
-}
-
-void DisplayDriverImpl::stopStreamDma()
-{
-    spi->stopDma();
-    MCU_CShigh();
-    streamInitialized = false;
-}
-
-bool DisplayDriverImpl::updateStreamDma(bool lastFrame)
-{
-    if (!streamInitialized)
-        return true;
-
-    if (streamUpdateStep == 0 && !lastFrame)
-        return false;
-
-    bool refreshScreenNow = false;
-
-    switch (streamUpdateStep)
-    {
-        case 0: // DMA send start
-        {
-            sendDataDma();
-            break;
-        }
-        case 1: // sending in progress
-        {
-            break;
-        }
-        case 2: // DMA transfer finished - time to show frame
-        {
-            refreshScreenNow = true;
-            setUpdateDmaStep(3);
-            break;
-        }
-        case 3:
-        {
-            setUpdateDmaStep(0);
-            break;
-        }
-    }
-
-    return refreshScreenNow;
-}
-
-void DisplayDriverImpl::sendDataDma()
-{
-    MCU_CSlow(); // CS low begins SPI transaction
-    EVE_AddrForWr(streamBufDestMemAddress);
-
-    spi->transferDmaBuff();
-
-    setUpdateDmaStep(1);
-}
-
-void dataTransferComplite()
-{
-    MCU_CShigh();
-
-    DisplayDriverImpl::setUpdateDmaStep(2);
 }
 
 //========================================================================================================

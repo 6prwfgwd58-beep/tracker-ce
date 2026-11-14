@@ -28,14 +28,6 @@ class DisplayDriver
     virtual uint8_t sendString(const char* string, uint32_t length) = 0;
     virtual void writeDataToCMD(const uint8_t* imgData, uint32_t totalDataSize) = 0;
 
-    virtual void initStreamDma(uint16_t byteResolution,
-                               uint16_t streamWidth,
-                               uint16_t streamHeight,
-                               uint8_t* streamBuf,
-                               uint32_t destMemAddress) = 0;
-    virtual bool updateStreamDma(bool lastFrame) = 0;
-    virtual void stopStreamDma() = 0;
-
     // Direct access to the chip's display-list memory, bypassing the
     // coprocessor. `offset` is in bytes from the start of the list. A swap
     // takes effect at the next frame of the panel; until then the list memory
