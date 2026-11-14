@@ -51,6 +51,12 @@
 	* **~5×–10× Lower Display CPU Overhead (Tracker+ & Tracker Mini) / ~3×–5× Lower (Original Tracker)**: Display transfers on Tracker+ and Tracker Mini now run in the background via hardware DMA (and idle screens no longer poll the display bus at all), freeing CPU headroom for tighter pad/encoder response, MIDI timing, and SD sample streaming.
 	* **Instant Recovery After Screenshots & General Speedups**: Taking SD card screenshots no longer stalls to rebuild the screen afterwards, audio sequencer state and SD file loading were streamlined for faster project/sample loads, and leftover display video-stream code from the removed NES emulator was cleaned up.
 
+* **Lower Real-Time Audio CPU Usage (All 3 Devices)**:
+	* Average ~36% less Audio CPU consumption on OG Tracker
+	* Average ~30% less on Tracker+ & Tracker Mini
+	* Silent tracks, idle `PolySynth` slots (once voice envelopes and post-FX tails finish), disconnected USB Audio outputs, disabled Limiter sidechains, and decayed Master FX (`Delay`, `Reverb`, `Limiter`, filters, dynamics) now sleep without allocating or mixing silent audio buffers, waking seamlessly on the next note.
+	* Faster Sample Playback, Envelopes, Master FX & Sequencer Clock.
+
 * **`CHIP` Synth Engine Performance Overhaul (Tracker+ & Tracker Mini)**:
 	* Optimized the `CHIP` synth engine's real-time audio math so playing dense 8-voice `CHIP` chords no longer causes audio dropouts or freezes.
 
@@ -65,6 +71,7 @@
 
 * **Audio Engine & Playback Fixes**:
 	* **Fixed Delay/Reverb Echo Bleed After Stop (Tracker+ & Tracker Mini)**: Fixed a bug where an instrument with no Delay or Reverb send could briefly echo in the right channel on the first note played after stopping playback.
+	* **Fixed Initial Delay Feedback & Reverb Damping on Boot (All 3 Devices)**: Fixed `audioEngine::init()` passing unscaled Delay feedback and un-inverted Reverb damping before a project parameter update refreshed them.
 	* **Fixed Noise Bursts on Very Short Loops & Grains (All 3 Devices)**: Prevented high-pitched notes on tiny backward loops, ping-pong loops, and granular grains from stepping past the loop boundaries and producing noise bursts.
 	* **Fixed Sequencer `Tune` Modulation (All 3 Devices)**: Fixed a bug where sequencer modulation assigned to `Tune` did not work unless `Wavetable Position` modulation was active.
 

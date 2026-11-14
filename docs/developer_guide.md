@@ -15,6 +15,7 @@ When extending the **Polyend Tracker Community Edition (CE)** firmware, adding n
 7. [Conditional Compilation: Targeting Specific Platforms or Devices](#7-conditional-compilation-targeting-specific-platforms-or-devices)
 8. [Development Console & Logging over USB (Tracker+ & Tracker Mini)](#8-development-console--logging-over-usb-tracker--tracker-mini)
 9. [Global File Browser (`GlobalFileBrowser`)](#9-global-file-browser-globalfilebrowser)
+10. [Real-Time Audio Graph (`AUDIO_NULL_IS_SILENCE`), DSP Sleep & IMX `fastmem.S`](#10-real-time-audio-graph-audio_null_is_silence-dsp-sleep--imx-fastmems)
 
 ---
 
@@ -22,14 +23,14 @@ When extending the **Polyend Tracker Community Edition (CE)** firmware, adding n
 
 | Platform & Memory Region | Total Capacity | Current Usage | Immediately Free | Theoretically Reclaimable | What Lives Here & Developer Notes |
 | :--- | ---: | ---: | ---: | ---: | :--- |
-| **Original (MK66) - `FLASH`** | `1,024 KB` | `~871 KB` (`85.1%`) | **`~153 KB`** | — | Code, `.rodata`, `.audio_ram_functions`, compressed fonts & bitmaps. |
-| **Original (MK66) - `RAM` (Internal SRAM)** | `256 KB` | `~128 KB` (`50.1%`) | **`~128 KB`** | — | Stack, heap, `.data`, and real-time `.bss`. Cold UI/FileManager singletons live in `EXTERNAL_RAM`. |
-| **Original (MK66) - `EXTERNAL_RAM` (SDRAM)** | `16,384 KB` | `~15,222 KB` (`92.9%`) | **`~1,162 KB` (`1.13 MB`)** | **`+3.5–4.0 MB`** *(up to `~5.1 MB` total)* | `11.25 MB` `SAMPLE_MEMORY_SIZE` (`7.5 MB` mono sample pool + `3.75 MB` FX edit buffer) + `1.5 MB` delay + `768 KB` shared `externalRamScratchBuff` + `VoiceStreamManager` ring buffers + cold UI singletons. |
-| **Plus / Mini (IMX) - `QSPI_FLASH`** | `~16,200 KB` | `~1,620–1,650 KB` (`10.0–10.2%`) | **`~14,570 KB`** | — | XIP Flash; plenty of room for code, lookup tables, and assets. |
-| **Plus / Mini (IMX) - `SRAM_ITC` (`RAM2`)** | `128 KB` | `~105.4 KB` (`82.4%`) | **`~22.5 KB`** | — | Zero-wait-state instruction TCM (`.ramfunc.$RAM2` / `.audio_ram_functions` hot DSP loops). |
-| **Plus / Mini (IMX) - `SRAM_DTC` (`RAM`)** | `352 KB` | `~330–331 KB` (`93.9–94.0%`) | **`~21–22 KB`** | — | Main stack, heap, `.data`, and real-time `.bss`. Keep large or non-realtime buffers in `EXTERNAL_RAM`. |
+| **Original (MK66) - `FLASH`** | `1,024 KB` | `~938 KB` (`91.6%`) | **`~86 KB`** | — | Code, `.rodata`, `.audio_ram_functions`, compressed fonts & bitmaps. |
+| **Original (MK66) - `RAM` (Internal SRAM)** | `256 KB` | `~194 KB` (`75.9%`) | **`~62 KB`** | — | Stack, heap, `.data`, real-time `.bss`, and `32 KB` `internalRamReverbBuff` (`Polyverb` delay lines in `.noinit` SRAM). Cold UI/FileManager singletons live in `EXTERNAL_RAM`. |
+| **Original (MK66) - `EXTERNAL_RAM` (SDRAM)** | `16,384 KB` | `~15,255 KB` (`93.1%`) | **`~1,129 KB` (`1.10 MB`)** | **`+3.5–4.0 MB`** *(up to `~4.6–5.1 MB` total)* | `11.25 MB` `SAMPLE_MEMORY_SIZE` (`7.5 MB` mono sample pool + `3.75 MB` FX edit buffer) + `1.5 MB` delay + `768 KB` shared `externalRamScratchBuff` + `VoiceStreamManager` ring buffers + cold UI singletons. |
+| **Plus / Mini (IMX) - `QSPI_FLASH`** | `~16,200 KB` | `~1,427–1,457 KB` (`8.8–9.0%`) | **`~14,765–14,800 KB`** | — | XIP Flash; plenty of room for code, lookup tables, and assets. |
+| **Plus / Mini (IMX) - `SRAM_ITC` (`RAM2`)** | `128 KB` | `~60.2 KB` (`47.1%`) | **`~67.8 KB`** | — | Zero-wait-state instruction TCM (`.ramfunc.$RAM2` / `.audio_ram_functions` hot DSP loops + `fastmem.S` `memcpy`/`memmove`/`memset`/`memcmp`). |
+| **Plus / Mini (IMX) - `SRAM_DTC` (`RAM`)** | `352 KB` | `~340.7–341.1 KB` (`96.8–96.9%`) | **`~10.9–11.3 KB`** | — | Main stack, heap, `.data`, and real-time `.bss`. Keep large or non-realtime buffers in `EXTERNAL_RAM`. |
 | **Plus / Mini (IMX) - `SRAM_OC` (`RAM3`)** | `32 KB` | `~22.7 KB` (`70.8%`) | **`~9.3 KB`** | — | Non-cacheable OCRAM used for USB/SDMA buffers and `audioRecBuff`. |
-| **Plus / Mini (IMX) - `EXTERNAL_RAM` (`RAM4`)** | `65,536 KB` | `~65,528 KB` (`99.99%`) | **`~8 KB`** | **`+23.0 MB`** *(up to `~23.0 MB` total)* | `~54 MB` `SAMPLE_MEMORY_SIZE` (`~39 MB` stereo sample pool + `15 MB` FX edit buffer) + `6 MB` `PSYN_RAM_POOL_SIZE` (`1.92 MB` `.psyn` arena + `4 MB` synth `SamplePool`) + `1.5 MB` delay + `768 KB` `externalRamScratchBuff` + `VoiceStreamManager` ring buffers + `64 KB` `g_wtEnvelopeBank`. |
+| **Plus / Mini (IMX) - `EXTERNAL_RAM` (`RAM4`)** | `65,536 KB` | `~65,516 KB` (`99.97%`) | **`~20 KB`** | **`+23.0 MB`** *(up to `~23.0 MB` total)* | `~54 MB` `SAMPLE_MEMORY_SIZE` (`~39 MB` stereo sample pool + `15 MB` FX edit buffer) + `6 MB` `PSYN_RAM_POOL_SIZE` (`1.92 MB` `.psyn` arena + `4 MB` synth `SamplePool`) + `1.5 MB` delay + `768 KB` `externalRamScratchBuff` + `VoiceStreamManager` ring buffers + `64 KB` `g_wtEnvelopeBank`. |
 
 ### Theoretically Available `EXTERNAL_RAM` via `SAMPLE_MEMORY_SIZE` (Hybrid SD Streaming)
 
@@ -40,7 +41,7 @@ By default, `SAMPLE_MEMORY_SIZE` in [`core/source/mtStructs.h`](../core/source/m
 However, because **Hybrid SD Card Sample Streaming** ([`core/AudioEngine/VoiceStreamManager.cpp`](../core/AudioEngine/VoiceStreamManager.cpp)) streams samples `>= 256 KB` (`kStreamThresholdBytes`) directly from the SD card while only allocating a **`32,768`-frame (`64 KB` per channel) pre-cache** in `externalRamSampleMemory`:
 * **Future developers can chip away at `SAMPLE_MEMORY_SIZE` whenever a new feature requires additional `EXTERNAL_RAM`**, simply by lowering `SAMPLE_MEMORY_SIZE` in [`core/source/mtStructs.h`](../core/source/mtStructs.h):
   * On **Tracker+ / Tracker Mini (`IMX`)**, reducing `SAMPLE_MEMORY_SIZE` from `~54 MB` down to `31 MB` (`31 * 1024 * 1024`, keeping the `15 MB` FX edit buffer + a `16 MB` resident sample pool for short samples, pre-caches, and Wavetable/Granular instruments) immediately frees **`~23 MB` of `EXTERNAL_RAM`**.
-  * On **Original Tracker (`MK66`)**, reducing `SAMPLE_MEMORY_SIZE` from `11.25 MB` (`45 * 256 * 1024`) down to `7.75 MB` (`31 * 256 * 1024`, keeping the `3.75 MB` FX edit buffer + a `4.0 MB` resident sample pool) frees **`3.5 MB` of additional `EXTERNAL_RAM`** on top of the **`1.13 MB`** already unassigned (**`~4.63 MB` total free `EXTERNAL_RAM`**).
+  * On **Original Tracker (`MK66`)**, reducing `SAMPLE_MEMORY_SIZE` from `11.25 MB` (`45 * 256 * 1024`) down to `7.75 MB` (`31 * 256 * 1024`, keeping the `3.75 MB` FX edit buffer + a `4.0 MB` resident sample pool) frees **`3.5 MB` of additional `EXTERNAL_RAM`** on top of the **`1.10 MB`** already unassigned (**`~4.60 MB` total free `EXTERNAL_RAM`**).
 * **Important when adjusting `SAMPLE_MEMORY_SIZE`**: Always keep `SAMPLE_MEMORY_SIZE > 2 * SAMPLE_CHANNELS * EDIT_BUFF_SIZE` (`> 3.75 MB` on `MK66`, `> 15 MB` on `IMX`) because `EDIT_BUFF_OFFSET` (`externalRamEffectsBuff`) is carved out of the top of `externalRamSampleMemory`.
 
 > **Important (`SRAM_DTC` / Internal `RAM` vs `EXTERNAL_RAM`)**:
@@ -287,3 +288,19 @@ Full developer reference and C++ examples live in [`docs/global_file_browser.md`
 * **One Shared Module Across Subsystems:** Covers 6 modes (`kLoadWav`, `kSaveWav`, `kLoadGenericFile`, `kSaveGenericFile`, `kLoadFolderPackage`, `kSaveFolderPackage`), used by Project Open / Save As / MOD & IT import, Synth Patch Load / Save As & Sample Slots, Sample Editor `.ptfx` file parameters, and `.ptp` effect presets. The multi-selection **Sample Loader** intentionally remains separate.
 * **Non-Overlapping `24 KB` Scratch Allocation (`[744 KB .. 768 KB]`):** Shares the top slice of `externalRamScratchBuff` above `.ptfx` code, working scratch, and secondary WAV buffers, preserving up to `10` LRU directory/cursor contexts (`kMaxSavedContexts = 10`) keyed by `contextKey`.
 * **Navigation & FatFs Hygiene:** Supports `Left`-arrow jump-to-top in the Explorer pane, protected system folders (`kProtectedFolders`), inline metadata (`onDescribeItem`), and pad auditioning (`onPadEvent`). Callbacks inspecting files on cursor highlight must close FatFs handles immediately (`closeFile(fh)` with `deleteOnClose = true`) and silence preview voices (`silencePart` / `onPreviewStop`) before loading the next asset.
+
+---
+
+## 10. Real-Time Audio Graph (`AUDIO_NULL_IS_SILENCE`), DSP Sleep & IMX `fastmem.S`
+
+* **`-DAUDIO_NULL_IS_SILENCE=1` Stream Contract ([`core/makefile`](../core/makefile), [`core/libs/Audio/AudioStream.h`](../core/libs/Audio/AudioStream.h))**:
+  * `receiveReadOnly()` / `receiveWritable()` returning `nullptr` represents `128` samples of digital silence (`0`). Idle voices, silent `PolySynth` parts (`isIdle()`), muted mixers/amplifiers/muxes, and decayed effects omit `transmit()` rather than allocating and zero-filling `audio_block_t` blocks.
+  * **Stateful DSP Rule**: Any `AudioStream` node with internal filter, delay, reverb, envelope, or dynamics state must continue processing across `nullptr` inputs until its output tail settles below threshold before going to sleep, and must wake immediately when a non-null block arrives.
+  * **Feedback Order & Send Silence Queries**: `AudioConnection` tracks `reverse_order` when a source updates after its destination in `AudioStream::update_all()`, and `AudioMixerBase::isInputSilenced(channel)` lets upstream producers (`AudioInput` gates, `PolySynth` pre-FX sends) skip work when downstream send gains are `0`.
+* **`IMX` ITCM Memory Routines ([`platforms/imx/source/fastmem.S`](../platforms/imx/source/fastmem.S))**:
+  * Places Thumb-2 32-byte burst (`ldmia`/`stmia`, `ldmdb`/`stmdb`) and unaligned-safe word `memcpy`, `memmove`, `memset`, and `memcmp` in `.audio_ram_functions` (`SRAM_ITC`), overriding `newlib-nano`'s QSPI Flash byte loops. Safe for arbitrary alignments in Normal memory (`SRAM_*`, `EXTERNAL_RAM`, `QSPI_FLASH`); do not call `memcpy`/`memset` on `Device` peripheral registers (`0x40000000+`).
+* **`MK66` Reverb SRAM & `Q38.26` Tick Clock**:
+  * On Original Tracker (`MK66`), `Polyverb` uses `internalRamReverbBuff` (`32 KB` in internal `.noinit` SRAM in [`core/libs/Audio/effect_polyverb.cpp`](../core/libs/Audio/effect_polyverb.cpp)) to avoid external SDRAM wait states while keeping full `44.1 kHz` sample rate.
+  * [`core/source/internalTickClock.h`](../core/source/internalTickClock.h) (`InternalTickClock`) drives `Sequencer::tick()` in `Q38.26` (`2^-26` µs) fixed-point integers instead of software `double` (`softfp`) math on Cortex-M4F/M7.
+* **Live Audio CPU & Heap/Stack Diagnostics (`/.develop`)**:
+  * Placing an empty `/.develop` file on the SD card enables live audio ISR CPU (`min`/`max`/`avg`/`last %`) and heap/stack telemetry on the `Config` screen across **all 3 devices** (pressing `Play` or `Stop` while on `Config` resets `Profiler` counters).

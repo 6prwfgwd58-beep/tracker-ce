@@ -69,7 +69,7 @@ Recommended for full-featured engines sharing code cleanly with Polyend's `Patch
 | :--- | :--- |
 | [`synth-plugin-sdk/include/psyn/psyn_cpp_bridge.h`](../synth-plugin-sdk/include/psyn/psyn_cpp_bridge.h) | Translates any `polysynth::InstrumentVoice` subclass into the C `.psyn` plugin ABI via `PSYN_REGISTER_CPP_VOICE(VoiceClass)`. |
 | [`synth/include/PolySynth/sdk/SynthVoiceSDK.h`](../synth/include/PolySynth/sdk/SynthVoiceSDK.h) | Header-only C++20 base class `CustomSynthVoice`, `ParamHelper`, math helpers, standard `MidiCCs`, and formatters. |
-| [`synth/include/PolySynth/sdk/InstrumentVoice.h`](../synth/include/PolySynth/sdk/InstrumentVoice.h) | Pure virtual voice interface (`onMidiEvent`, `onParamChange`, `renderVoiceAudio`, `renderPostProcessAudio`, note query methods). |
+| [`synth/include/PolySynth/sdk/InstrumentVoice.h`](../synth/include/PolySynth/sdk/InstrumentVoice.h) | Pure virtual voice interface (`onMidiEvent`, `onParamChange`, `renderVoiceAudio`, `renderPostProcessAudio`, `hasPostProcess`, note query methods). |
 | [`synth/include/PolySynth/sdk/InstrumentType.h`](../synth/include/PolySynth/sdk/InstrumentType.h) | Engine factory interface (`createMetadata`, `createVoice`). |
 | [`synth/include/PolySynth/Core.h`](../synth/include/PolySynth/Core.h) | Core types (`sample_t = float`, `note_t = uint8_t`, `AudioBufferRef`, `AudioBufferStereoRef`, `kNoteA4 = 69`, `kMaxMacroCount = 8`, `kUserMacroCount = 6`). |
 | [`synth/include/PolySynth/Patch.h`](../synth/include/PolySynth/Patch.h) | `Patch`, `Patch::Metadata`, `Param`, `Macro`, `SampleSlot`, `EditorLayout`, `EditorElement`, `OutputChannels`. |
@@ -95,6 +95,7 @@ The Tracker audio engine supports **3 active synth slots** (`SYN 1`, `SYN 2`, `S
    - Stereo voices receive both Left (`outputBuffer[0]`) and Right (`outputBuffer[1]`).
    - Mono voices render into `outputBuffer[0]`.
    - Voices may optionally write stereo post-processing (`renderPostProcessAudio`) or scope waveform previews (`renderGraph` / `voice_render_graph`).
+   - When all voices return `isActive() == false` (and any post-processing tail settles), `PolySynth` marks the part idle and skips rendering/mixing until the next note-on or parameter wake.
 
 ---
 
@@ -391,6 +392,8 @@ The Tracker Patch Editor displays a **2x6 grid of tiles**: the **top 6 tiles** c
    Keep `.text` + `.rodata` + `.data` + `.bss` + `slot_alloc` usage compact so multiple engines remain co-resident in `PsynLoader::kArenaSize` (`1,920 KB`) without triggering frequent LRU evictions when switching synth parts (`SYN 1`–`SYN 3`). Keep `__fp16` parameter ranges within `[-65500, +65500]`.
 4. **Hardware Single-Precision FPU (`VFPv5`):**
    Use single-precision `float` (`0.0f`, `std::sinf`, `std::powf`, `std::fabsf`), never `double`. Hoist per-block filter/envelope/frequency computations outside the `128`-sample audio loop, and band-limit sharp waveform discontinuities (e.g. PolyBLEP).
+5. **Accurate `isActive()` & Post-Process Sleep (`hasPostProcess()` / `voice_render_post_process`):**
+   `InstrumentImpl` puts a synth slot into zero-CPU null-silence sleep once all voices return `isActive() == false` (`voice_is_active` in C) and any post-processing tail settles (`32` consecutive blocks `< 1e-5f`, `~93 ms`). Voices must return `false` from `isActive()` once their amplitude envelope finishes, and Pure C `.psyn` plugins without global post-FX should set `voice_render_post_process = NULL` (or leave `InstrumentVoice::hasPostProcess()` as `false` for direct C++ subclasses) so idle sleep engages immediately without running tail blocks.
 
 ---
 

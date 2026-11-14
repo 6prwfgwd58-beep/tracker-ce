@@ -60,6 +60,8 @@ class SynthImpl
                            std::span<AudioBufferRef> bufferAux,
                            int instrumentId) override;
 
+    [[nodiscard]] bool isInstrumentIdle(int instrumentId) const override;
+
     void updateAudio() override;
     void updateMain() override;
 

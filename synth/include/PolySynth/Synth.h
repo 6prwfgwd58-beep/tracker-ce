@@ -133,6 +133,8 @@ class Synth
                                    int instrumentId) = 0;
 #endif
 
+    [[nodiscard]] virtual bool isInstrumentIdle(int instrumentId) const = 0;
+
     /**
      * Update the synth in audio thread.
      */

@@ -49,6 +49,8 @@ class InstrumentVoice
     virtual void renderPostProcessAudio(const InstrumentVoiceContext& /*ctx*/,
                                         AudioBufferStereoRef /*outputBuffer*/){};
 
+    virtual bool hasPostProcess() const { return false; }
+
     virtual void renderGraph(std::span<float> points) { std::ranges::fill(points, 0); };
 
     /**

@@ -1340,6 +1340,12 @@ class PsynVoiceWrapper : public InstrumentVoice
           pluginVoice_, &pctx, outputBuffer[0].data(), outputBuffer[1].data());
     }
 
+    bool hasPostProcess() const override
+    {
+        const PsynPluginApi* api = getActiveApi();
+        return api != nullptr && api->voice_render_post_process != nullptr;
+    }
+
     void renderGraph(std::span<float> points) override
     {
         const PsynPluginApi* api = getActiveApi();

@@ -22,7 +22,7 @@ Welcome to the official documentation for **Polyend Tracker Community Edition (C
 ## Developer & SDK Documentation
 
 * **[Firmware Architecture, Hardware Limits & Developer Gotchas (`docs/developer_guide.md`)](developer_guide.md)**
-  * Hardware memory budgets (`FLASH`, `SRAM_DTC`, `SRAM_ITC`, `EXTERNAL_RAM`, `PSYN_RAM_POOL_SIZE`, plus reclaimable `SAMPLE_MEMORY_SIZE` headroom), the 4-region `768 KB` scratch buffer layout (`externalRamScratchBuff`), the Copy-on-Write `/Workspace/instruments/` fast project loader, Hybrid SD Card Sample Streaming (`VoiceStreamManager`), `.psyn` dynamic synth loading, FT812 display/bootloader constraints, and platform preprocessor guards (`PLATFORM_IMX`, `TRACKER_MINI`, `GUI_HANDLE_SYNTH`).
+  * Hardware memory budgets (`FLASH`, `SRAM_DTC`, `SRAM_ITC`, `EXTERNAL_RAM`, `PSYN_RAM_POOL_SIZE`, plus reclaimable `SAMPLE_MEMORY_SIZE` headroom), `-DAUDIO_NULL_IS_SILENCE=1` audio-graph sleep, `IMX` `fastmem.S`, the 4-region `768 KB` scratch buffer layout (`externalRamScratchBuff`), the Copy-on-Write `/Workspace/instruments/` fast project loader, Hybrid SD Card Sample Streaming (`VoiceStreamManager`), `.psyn` dynamic synth loading, FT812 display/bootloader constraints, and platform preprocessor guards (`PLATFORM_IMX`, `TRACKER_MINI`, `GUI_HANDLE_SYNTH`).
 * **[Global File Browser Developer Guide (`docs/global_file_browser.md`)](global_file_browser.md)**
   * Unified SD-card file, `.wav`, and package-folder browser (`GlobalFileBrowser`), 6 operation modes, one-call helpers, `GlobalFileBrowserConfig` inspector/audition/delete hooks, `Left`-arrow jump-to-top, and `24 KB` scratch memory + FatFs handle safety rules.
 * **[Custom Synth Engine & `.psyn` Plugin SDK (`docs/custom_synth_sdk.md`)](custom_synth_sdk.md)**
