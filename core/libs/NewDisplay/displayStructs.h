@@ -19,8 +19,6 @@ extern "C"
 // #########################################################################
 
 const uint8_t controlsCount = 65;
-const uint32_t controlsRamStartAddress = 150000;
-const uint32_t controlsRamAddressStep = 8192;
 
 const uint32_t imgRamAddress = 670000;
 const uint32_t imgSizeMax = 1000000 - imgRamAddress;

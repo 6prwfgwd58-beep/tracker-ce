@@ -60,18 +60,19 @@ void glyphs(int32_t x,
         y -= metrics[kFontHeightOffset] / 2;
     }
 
-    put(0x22000000);          // SAVE_CONTEXT
-    put(0x27000002);          // VERTEX_FORMAT(2)
-    put(0x05000000 | handle); // BITMAP_HANDLE
-    put(0x1F000001);          // BEGIN(BITMAPS)
+    const uint8_t bitmapHandle = handle & 31;
+    put(0x22000000);                // SAVE_CONTEXT
+    put(0x27000002);                // VERTEX_FORMAT(2)
+    put(0x05000000 | bitmapHandle); // BITMAP_HANDLE
+    put(0x1F000001);                // BEGIN(BITMAPS)
     for (uint32_t i = 0; i < count; i++)
     {
         uint8_t character = characters[i];
         uint32_t cell = character & 127;
         if (x >= 0 && x < kVertex2iiLimit && y >= 0 && y < kVertex2iiLimit)
         {
-            put(0x80000000 | ((uint32_t)x << 21) | ((uint32_t)y << 12) | ((uint32_t)handle << 7) |
-                cell);
+            put(0x80000000 | ((uint32_t)x << 21) | ((uint32_t)y << 12) |
+                ((uint32_t)bitmapHandle << 7) | cell);
         }
         else
         {

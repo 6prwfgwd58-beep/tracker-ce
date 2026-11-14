@@ -193,7 +193,7 @@ constexpr uint32_t kBuildBudgetUs = 1000;
 // where the driver can do that.
 constexpr uint32_t kBackgroundWords = 48;
 constexpr uint8_t kFirstRomFont = 16;
-constexpr uint8_t kLastRomFont = 34;
+constexpr uint8_t kLastRomFont = 31;
 constexpr uint8_t kRomFontsKept = 2;
 constexpr uint32_t kRomFontTablePointer = 0x2FFFFC;
 constexpr uint32_t kRomFontBlockSize = 148;
@@ -214,7 +214,7 @@ __NOINIT(EXTERNAL_RAM) uint32_t frameWords[kFrameWords];
 // and lets the other be written, so a new frame only has to send what
 // differs from the frame before the one on screen.
 __NOINIT(EXTERNAL_RAM) uint32_t chipLists[2][kFrameWords];
-__NOINIT(EXTERNAL_RAM) uint8_t romFontMetrics[kRomFontsKept][displayList::kFontMetricsSize];
+uint8_t romFontMetrics[kRomFontsKept][displayList::kFontMetricsSize];
 uint8_t romFontKept[kRomFontsKept];
 uint8_t romFontNext = 0;
 
@@ -402,6 +402,14 @@ void cDisplay::bindFonts()
     }
 
     showScreen();
+
+    for (hControl handle = 0; handle < controlsCount; handle++)
+    {
+        if (controlsTable[handle] != nullptr && controlsTable[handle]->refresh)
+        {
+            refreshControl(handle);
+        }
+    }
 }
 
 void cDisplay::beginScreen()
@@ -469,6 +477,22 @@ void cDisplay::begin(DisplayDriver* displayDriver, Timer* timer)
     cDisplayControl::setDisplayDriver(displayDriver);
 
     this->timer = timer;
+
+    refreshQueueTop = 0;
+    refreshQueueBott = 0;
+    composePending = false;
+    frameBuilding = false;
+    uploadNext = 0;
+    uploadRun = 0;
+    uploadRunCount = 0;
+    uploadSwaps = false;
+    swapInFlight = false;
+    swapPolledAt = 0;
+    backList = 0;
+    forgetChipLists();
+    displayList::setFontMetrics(fontMetrics);
+    setTheme(0);
+
     // ####################################
 #ifndef TRACKER_MINI
     decompress(poly_logo_160x172_l8_compressed,
@@ -510,21 +534,6 @@ void cDisplay::begin(DisplayDriver* displayDriver, Timer* timer)
     API_RESTORE_CONTEXT();
 
     showScreen();
-
-    refreshQueueTop = 0;
-    refreshQueueBott = 0;
-    composePending = false;
-    frameBuilding = false;
-    uploadNext = 0;
-    uploadRun = 0;
-    uploadRunCount = 0;
-    uploadSwaps = false;
-    swapInFlight = false;
-    swapPolledAt = 0;
-    backList = 0;
-    forgetChipLists();
-    displayList::setFontMetrics(fontMetrics);
-    setTheme(0);
 }
 
 //=================================================================================================
@@ -1567,10 +1576,14 @@ bool cDisplay::loadCustomFontFromSD(FileSystem* fs, const char* fontFilePath)
 
     for (uint8_t i = 0; i < displayFontCount; i++)
     {
-        if (entries[i].size > kMaxFontBufferSize)
+        if (entries[i].size < 148 || entries[i].size > kMaxFontBufferSize)
         {
             fs->closeFile(file);
             return false;
+        }
+        if (entries[i].size < sizeof(fonts[i].data))
+        {
+            memset(decompressedFontsCommonBuffer, 0, sizeof(fonts[i].data));
         }
 
         fs->seekFile(entries[i].offset, file);

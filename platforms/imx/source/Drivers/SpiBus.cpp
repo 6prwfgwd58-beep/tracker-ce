@@ -202,6 +202,7 @@ bool SpiBus::startWriteWords(const uint32_t* data, uint32_t count)
 
     DMAMUX_Init(DMAMUX);
     EDMA_DisableChannelRequest(DMA0, kEdmaTxChannel);
+    DMAMUX_DisableChannel(DMAMUX, kEdmaTxChannel);
     DMAMUX_SetSource(DMAMUX, kEdmaTxChannel, kDmaRequestMuxLPSPI4Tx);
     DMAMUX_EnableChannel(DMAMUX, kEdmaTxChannel);
     EDMA_ClearChannelStatusFlags(

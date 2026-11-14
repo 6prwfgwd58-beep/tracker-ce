@@ -541,44 +541,43 @@ void API_CMD_SLIDER(int16_t x,
 
 void API_BITMAP_ROTATE_270(uint16_t height)
 {
-    displayList::rotate270(height);
+    if (displayList::capturing())
+    {
+        displayList::rotate270(height);
+        return;
+    }
+    const uint32_t side = 2u * (height / 2);
+    listWord(BITMAP_TRANSFORM_F(0));
+    listWord(BITMAP_TRANSFORM_E(0));
+    listWord(BITMAP_TRANSFORM_D(0xFF));
+    listWord(BITMAP_TRANSFORM_C(side * 256 - 1));
+    listWord(BITMAP_TRANSFORM_B(0x1FF00));
+    listWord(BITMAP_TRANSFORM_A(0));
 }
 
 void API_BITMAP_TRANSFORM_A(long a)
 {
-    coprocessorWrite(
-      BITMAP_TRANSFORM_A(a)); //    ((21UL<<24)|(((a)&131071UL)<<0))
-    coprocessorAdvance(4);
+    listWord(BITMAP_TRANSFORM_A(a)); //    ((21UL<<24)|(((a)&131071UL)<<0))
 }
 void API_BITMAP_TRANSFORM_B(long b)
 {
-    coprocessorWrite(
-      BITMAP_TRANSFORM_B(b)); //  ((22UL<<24)|(((b)&131071UL)<<0))
-    coprocessorAdvance(4);
+    listWord(BITMAP_TRANSFORM_B(b)); //  ((22UL<<24)|(((b)&131071UL)<<0))
 }
 void API_BITMAP_TRANSFORM_C(long c)
 {
-    coprocessorWrite(
-      BITMAP_TRANSFORM_C(c)); //  ((23UL<<24)|(((c)&16777215UL)<<0))
-    coprocessorAdvance(4);
+    listWord(BITMAP_TRANSFORM_C(c)); //  ((23UL<<24)|(((c)&16777215UL)<<0))
 }
 void API_BITMAP_TRANSFORM_D(long d)
 {
-    coprocessorWrite(
-      BITMAP_TRANSFORM_D(d)); //   ((24UL<<24)|(((d)&131071UL)<<0))
-    coprocessorAdvance(4);
+    listWord(BITMAP_TRANSFORM_D(d)); //   ((24UL<<24)|(((d)&131071UL)<<0))
 }
 void API_BITMAP_TRANSFORM_E(long e)
 {
-    coprocessorWrite(
-      BITMAP_TRANSFORM_E(e)); //   ((25UL<<24)|(((e)&131071UL)<<0))
-    coprocessorAdvance(4);
+    listWord(BITMAP_TRANSFORM_E(e)); //   ((25UL<<24)|(((e)&131071UL)<<0))
 }
 void API_BITMAP_TRANSFORM_F(long f)
 {
-    coprocessorWrite(
-      BITMAP_TRANSFORM_F(f)); //  ((26UL<<24)|(((f)&16777215UL)<<0))
-    coprocessorAdvance(4);
+    listWord(BITMAP_TRANSFORM_F(f)); //  ((26UL<<24)|(((f)&16777215UL)<<0))
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Interrupt(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t ms);
