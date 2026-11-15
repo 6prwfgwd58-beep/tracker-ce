@@ -35,9 +35,9 @@ All synthesizer engines in `tracker-ce` (built-in factory engines `ACD`, `FAT`, 
 │  ┌───────────────▼─────────────────────────────────────▼────────────────┐  │
 │  │                    libPolySynth.a + PsynLoader                       │  │
 │  │  • Scans /Synths/*.psyn headers at boot                              │  │
-│  │  • Loads up to 1,024 KB into the 1,920 KB SDRAM plugin arena at boot │  │
+│  │  • Preloads engines up to kMaxPreloadBytes into the SDRAM arena      │  │
 │  │  • Loads additional engines on demand & LRU-evicts inactive engines  │  │
-│  │  • Shares 4 MB SamplePool across all active sample-based voices      │  │
+│  │  • Shares SamplePool across all active sample-based voices           │  │
 │  └──────────────────────────────────┬───────────────────────────────────┘  │
 └─────────────────────────────────────┼──────────────────────────────────────┘
                                       │
@@ -51,9 +51,9 @@ All synthesizer engines in `tracker-ce` (built-in factory engines `ACD`, `FAT`, 
 
 ### Key Architectural Facts
 * **Zero Firmware Changes Needed:** Drop any compiled `MYENGINE.psyn` onto the SD card under `/Synths/`. `PsynLoader` ([`synth/source/synths/PsynLoader.h`](../synth/source/synths/PsynLoader.h), [`PsynLoader.cpp`](../synth/source/synths/PsynLoader.cpp)) discovers `.psyn` headers automatically at boot and [`SynthEditor`](../core/interface/instrumentEditor/SynthEditor.cpp) populates the model selector dynamically from `synth->getSynthTypes()`.
-* **Dedicated `6 MB` Synth SDRAM Pool (`PSYN_RAM_POOL_SIZE`):** Defined in [`core/source/mtStructs.h`](../core/source/mtStructs.h):
-  * **`1,920 KB` `.psyn` Executable & Heap Arena (`PsynLoader::kArenaSize = 3 * 640 KB`):** Holds relocated plugin code, `.rodata`, `.data`, `.bss`, `.init_array` constructors, per-engine `slot_alloc` allocations, and `load_wav_file` buffers. Boot preloading caches engines up to `kMaxPreloadBytes = 1,024 KB`; remaining `.psyn` plugins load lazily when selected, with **LRU eviction** of inactive engines when headroom is needed.
-  * **`4 MB` Synth `SamplePool` (`initSamplePool(4 * 1024 * 1024)`):** Shared reference-counted SDRAM pool for engine `SampleSlot` assets (custom sample-based `.psyn` engines) with content deduplication across instruments and patches.
+* **Dedicated Synth SDRAM Pool (`PSYN_RAM_POOL_SIZE`):** Defined in [`core/source/mtStructs.h`](../core/source/mtStructs.h) — see [`docs/memory_map.md`](memory_map.md#4-synthesizer-sdram-pool-psyn_ram_pool_size--imx) for exact pool, arena, boot-preload, and shared `SamplePool` capacities:
+  * **`.psyn` Executable & Heap Arena (`PsynLoader::kArenaSize`):** Holds relocated plugin code, `.rodata`, `.data`, `.bss`, `.init_array` constructors, per-engine `slot_alloc` allocations, and `load_wav_file` buffers. Boot preloading caches engines up to `kMaxPreloadBytes`; remaining `.psyn` plugins load lazily when selected, with **LRU eviction** of inactive engines when headroom is needed.
+  * **Synth `SamplePool` (`initSamplePool(...)`):** Shared reference-counted SDRAM pool for engine `SampleSlot` assets (custom sample-based `.psyn` engines) with content deduplication across instruments and patches.
 * **Cross-Device Compatibility:** Every `.psyn` header carries both `type_id_wave` (Polyend Synth) and `type_id_play_tracker` (Play/Tracker), or `0` to auto-assign deterministic non-colliding dynamic runtime IDs (`0x100+`).
 
 ---
@@ -88,7 +88,7 @@ Recommended for full-featured engines sharing code cleanly with Polyend's `Patch
 The Tracker audio engine supports **3 active synth slots** (`SYN 1`, `SYN 2`, `SYN 3`) sharing up to **8 voices total**:
 
 1. **Discovery & Initialization**: On SD mount, `PsynLoader` reads the 128-byte `PsynHeader` from every `.psyn` file in `/Synths/` (falling back to `/Synth/`), registers its `InstrumentType`, and creates `/SynthSamples/<CODE_NAME>/` if `PSYN_FLAG_HAS_SAMPLE_SLOTS` is set.
-2. **Activation & Instantiation**: When a user selects the engine or loads a `.patch`, `PsynLoader` relocates the `.psyn` ELF sections into the `1,920 KB` SDRAM arena (if not already resident), calls static `.init_array` constructors, and constructs active voices (`create_voice`).
+2. **Activation & Instantiation**: When a user selects the engine or loads a `.patch`, `PsynLoader` relocates the `.psyn` ELF sections into the SDRAM arena ([`PsynLoader::kArenaSize`](memory_map.md#4-synthesizer-sdram-pool-psyn_ram_pool_size--imx), if not already resident), calls static `.init_array` constructors, and constructs active voices (`create_voice`).
 3. **Parameter Synchronization**: Changing a knob, macro, or loading a patch triggers `onParamChange(paramId, newValue)` (or `voice_on_param_change` in C).
 4. **MIDI Delivery**: Pattern notes, pads, and external MIDI trigger `onMidiEvent(ctx, event)` (or `CustomSynthVoice::onNoteOn` / `onNoteOff`).
 5. **128-Sample Audio Rendering**: Every audio block (`block_size = 128` samples at `44,100 Hz`), active voices render normalized floating-point audio (`[-1.0f, +1.0f]`) via `renderVoiceAudio` (`voice_render_audio`).
@@ -225,11 +225,13 @@ python3 synth-plugin-sdk/tools/psyn_builder.py \
     --max-voices 8 \
     --output-channels 2 \
     --renders-aux 0 \
-    --has-sample-slots 0
+    --has-sample-slots 0 \
+    --supports-idle-sleep 1 \
+    --has-voice-tick-idle 0
 ```
 
 > [!TIP]
-> Always set `--type-id-wave 0` and `--type-id-play-tracker 0` for new third-party engines. `PsynLoader` hashes `code_name` into a deterministic runtime `InstrumentTypeId` (`0x100+`) so community engines coexist safely without colliding with factory IDs.
+> Always set `--type-id-wave 0` and `--type-id-play-tracker 0` for new third-party engines (`PsynLoader` hashes `code_name` into a deterministic runtime `InstrumentTypeId` `0x100+` that never collides with factory IDs), and pass `--supports-idle-sleep 1` whenever your voice implements `isActive()` (plus `--has-voice-tick-idle 1` if it also overrides `tickIdle()`; see [Section 10.5](#10-real-time-audio-cpu--memory-guidelines)).
 
 ### Step 3: Deploy onto SD Card
 Copy the `.psyn` binary to `/Synths/MYSYN.psyn` and any preset patches to `/Patches/MYSYN/*.patch`. Reboot or re-enter the Synth menu — your new engine appears automatically in the Synth model selector (`SynthEditor`).
@@ -350,7 +352,7 @@ The Tracker Patch Editor displays a **2x6 grid of tiles**: the **top 6 tiles** c
 | `"LFO"` | `LFO 1`, `LFO 2`... | `kBitmapLfo` | Dedicated LFO sections |
 | `"Filter"` | `Filter` | `kBitmapFilter` | Lowpass/highpass/bandpass filter, resonance |
 | `"Shaper"` | `Shp` | `kBitmapShaper` | Distortion, wavefolder, drive (`DIRT`) |
-| `"Voice"` | `Voice` | `kBitmapGear` | Play mode (`Mono`/`Legato`/`Poly`), glide, gain |
+| `"Voice"` | `Voice` | `kBitmapGear` | Play mode (`Mono`/`Legato`/`Poly`), glide, gain, host-injected `Voice Sleep` |
 | `"FX"` | `FX` | `kBitmapFX` | Built-in voice/synth effects |
 | `"Mixer"` | `Mixer` | `kBitmapMixer` | Oscillator or drum mixer |
 | `"Kick"`, `"Tom"`, `"Snare"`, `"Hihat"`, `"Cymbal"`, `"Percussion"` | Same as name | Drum icons | Drum synth voices (`PERC`) |
@@ -388,8 +390,8 @@ The Tracker Patch Editor displays a **2x6 grid of tiles**: the **top 6 tiles** c
    `sdk::ParamHelper::addParam` stores each handler as a 4-byte stateless function pointer (`void (*)(VoiceType&, Patch::optional_paramvalue_t)`). Handler lambdas must not capture variables (`[]` only), keeping `.bss` overhead near zero (`4 bytes * numParams`).
 2. **Zero Allocations or Blocking Calls in Audio Loops:**
    Never allocate heap memory (`new`, `malloc`, `std::vector::push_back`, `std::string`) or perform SD card I/O inside `renderVoiceAudio()`, `renderPostProcessAudio()`, `tickIdle()`, `onNoteOn()`, `onNoteOff()`, or `onParamChange()`.
-3. **Budget Within the `.psyn` SDRAM Arena (`1,920 KB` Total):**
-   Keep `.text` + `.rodata` + `.data` + `.bss` + `slot_alloc` usage compact so multiple engines remain co-resident in `PsynLoader::kArenaSize` (`1,920 KB`) without triggering frequent LRU evictions when switching synth parts (`SYN 1`–`SYN 3`). Keep `__fp16` parameter ranges within `[-65500, +65500]`.
+3. **Budget Within the `.psyn` SDRAM Arena (`PsynLoader::kArenaSize`):**
+   Keep `.text` + `.rodata` + `.data` + `.bss` + `slot_alloc` usage compact so multiple engines remain co-resident in [`PsynLoader::kArenaSize`](memory_map.md#4-synthesizer-sdram-pool-psyn_ram_pool_size--imx) without triggering frequent LRU evictions when switching synth parts (`SYN 1`–`SYN 3`). Keep `__fp16` parameter ranges within `[-65500, +65500]`.
 4. **Hardware Single-Precision FPU (`VFPv5`):**
    Use single-precision `float` (`0.0f`, `std::sinf`, `std::powf`, `std::fabsf`), never `double`. Hoist per-block filter/envelope/frequency computations outside the `128`-sample audio loop, and band-limit sharp waveform discontinuities (e.g. PolyBLEP).
 5. **Idle Sleep, Per-Patch `Voice Sleep`, `tickIdle()`, & Post-Process Sleep:**

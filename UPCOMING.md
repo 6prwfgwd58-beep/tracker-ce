@@ -55,11 +55,12 @@
 	* Average ~36% less Audio CPU consumption on OG Tracker
 	* Average ~30% less on Tracker+ & Tracker Mini
 	* Silent sample tracks, idle `PolySynth` slots (once voice envelopes and post-FX tails finish), disconnected USB Audio outputs, disabled Limiter sidechains, and decayed Master FX (`Delay`, `Reverb`, `Limiter`, filters) now sleep without allocating or mixing silent audio buffers, waking seamlessly on the next note.
-	* Added per-patch `Voice Sleep` (`On` by default, in the synth `Voice` layout) and `.psyn` idle-sleep support (`PSYN_FLAG_SUPPORTS_IDLE_SLEEP`, `PSYN_FLAG_HAS_VOICE_TICK_IDLE` / `tickIdle()`): when `Voice Sleep` is `On`, idle voices enter full zero-CPU sleep once active voices and post-FX tails finish; when `Off`, engines providing `tickIdle()` (such as `CHIP.psyn`) run lightweight phase/modulation advancement without full audio rendering or silent block allocation, while engines without `tickIdle()` run full legacy rendering (unflagged ABI v1 plugins stay active for backwards compatibility).
+	* Added per-patch `Voice Sleep` (`On` by default, in the synth `Voice` layout) and `.psyn` idle-sleep support (`PSYN_FLAG_SUPPORTS_IDLE_SLEEP`, `PSYN_FLAG_HAS_VOICE_TICK_IDLE` / `tickIdle()`): when `Voice Sleep` is `On`, idle voices enter full zero-CPU sleep once active voices and any post-FX tails finish (engines without global post-FX sleep immediately on voice release); when `Off`, engines providing `tickIdle()` (all bundled factory `.psyn` engines and `CHIP.psyn`) run lightweight phase/modulation advancement without full audio rendering or silent block allocation, while engines without `tickIdle()` run full legacy rendering (unflagged ABI v1 plugins stay active for backwards compatibility).
 	* Faster Sample Playback, Envelopes, Master FX & `Q38.26` Sequencer Clock; DSP output remains within `<= 1 LSB` (synth soft-clip reciprocal), `<= 3 LSB` (SVF sub-LSB tail sleep), and `<= 7 LSB` (`Polyverb` tail sleep/wake) of `main`.
 
-* **`CHIP` Synth Engine Performance Overhaul (Tracker+ & Tracker Mini)**:
-	* Optimized the `CHIP` synth engine's real-time audio math so playing dense 8-voice `CHIP` chords no longer causes audio dropouts or freezes.
+* **Factory & `CHIP` Synth Engine Performance Overhaul (Tracker+ & Tracker Mini)**:
+	* Overhauled real-time oscillator, filter (`SVF`, `Ladder`, `Diode`, `Biquad`), envelope, and modulation math across all factory `.psyn` synth engines (`ACD`, `FAT`, `VAP`, `WTFM`, `PERC`, `DIRT`) and `CHIP` for **~1.5×–3.3× faster** active voice rendering, zero silent-tail denormals, improved low-cutoff `Diode` filter precision, and clean `PERC` voice sleep termination while preserving original patch sound (`<= 1 LSB` typical RMS difference).
+	* Playing dense 8-voice chords and multi-synth arrangements (including `CHIP`) runs with significantly lower CPU load without audio dropouts or freezes.
 
 * **Safer USB Storage Mode (Tracker+ & Tracker Mini)**:
 	* Entering USB Storage mode now cleanly stops playback, armed recordings, held notes, and SD sample streaming, and saves any pending changes first so the Tracker and your computer never write to the SD card at the same time.
