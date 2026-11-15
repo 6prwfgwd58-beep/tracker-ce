@@ -61,6 +61,7 @@ class SynthImpl
                            int instrumentId) override;
 
     [[nodiscard]] bool isInstrumentIdle(int instrumentId) const override;
+    bool prepareSilentInstrument(int instrumentId) override;
 
     void updateAudio() override;
     void updateMain() override;

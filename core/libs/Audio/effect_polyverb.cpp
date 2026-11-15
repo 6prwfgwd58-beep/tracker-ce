@@ -2,11 +2,16 @@
 
 #include "effect_polyverb.h"
 #include "cr_mtb_buffer.h"
+#include <cr_section_macros.h>
 
 extern uint16_t externalRamReverbBuff[];
-// Place buffer E (8 of 12 reads and 8 of 11 writes per reverb sample) in internal SRAM on all platforms
-// rather than uncached 90 MHz external SDRAM on MK66. Same size and content: bit-identical output.
+#ifdef PLATFORM_IMX
+// Place buffer E (8 of 12 reads and 8 of 11 writes per reverb sample) in internal SRAM on i.MX.
 static uint16_t internalRamReverbBuff[16384] __attribute__((section(".noinit")));
+#else
+// On MK66 keep buffer E in external SDRAM to preserve internal heap/stack headroom.
+static __NOINIT(EXTERNAL_RAM) uint16_t internalRamReverbBuff[16384];
+#endif
 
 AudioEffectPolyverb::AudioEffectPolyverb()
   : AudioStream(2, inputQueueArray)
@@ -51,35 +56,53 @@ AUDIO_CORE_RAM void AudioEffectPolyverb::update(void)
     audio_block_t* block_right;
 
 #ifdef AUDIO_NULL_IS_SILENCE
-    // a missing input is silence: the reverb tail keeps ringing (stock took a block of zeros here, and left the other input unread)
-    block_left = receiveWritable(0);
-    block_right = receiveWritable(1);
-    const bool silentIn = isSilentOrMissing(block_left) && isSilentOrMissing(block_right);
+    // Peek read-only first so shared zero blocks while asleep never allocate or copy memory.
+    audio_block_t* ro_left = receiveReadOnly(0);
+    audio_block_t* ro_right = receiveReadOnly(1);
+    const bool silentIn = isSilentOrMissing(ro_left) && isSilentOrMissing(ro_right);
     if (silentIn && reverb.IsQuiet())
     {
         // Silent input and a reverb that has decayed below 1 LSB everywhere (the line buffers are zero): nothing to compute, nothing to
         // transmit. The next block with sound starts from a clean reverb.
-        if (block_left)
-            release(block_left);
-        if (block_right)
-            release(block_right);
+        if (ro_left)
+            release(ro_left);
+        if (ro_right)
+            release(ro_right);
         reverb.SkipQuiet(AUDIO_BLOCK_SAMPLES);
         return;
     }
-    if (block_left == NULL)
+    auto toWritable = [this](audio_block_t*& ro) -> audio_block_t*
     {
-        block_left = allocate();
-        if (block_left)
-            memset(block_left->data, 0, sizeof(block_left->data));
-    }
-    if (block_right == NULL)
-    {
-        block_right = allocate();
-        if (block_right)
-            memset(block_right->data, 0, sizeof(block_right->data));
-    }
+        if (ro == NULL)
+        {
+            audio_block_t* blk = allocate();
+            if (blk)
+                memset(blk->data, 0, sizeof(blk->data));
+            return blk;
+        }
+        if (ro->ref_count == 1)
+        {
+            audio_block_t* blk = ro;
+            ro = NULL;
+            return blk;
+        }
+        audio_block_t* blk = allocate();
+        if (blk)
+        {
+            memcpy(blk->data, ro->data, sizeof(blk->data));
+            release(ro);
+            ro = NULL;
+        }
+        return blk;
+    };
+    block_left = toWritable(ro_left);
+    block_right = block_left ? toWritable(ro_right) : NULL;
     if (block_left == NULL || block_right == NULL)
     {
+        if (ro_left)
+            release(ro_left);
+        if (ro_right)
+            release(ro_right);
         if (block_left)
             release(block_left);
         if (block_right)
@@ -113,9 +136,9 @@ AUDIO_CORE_RAM void AudioEffectPolyverb::update(void)
 
 AUDIO_CORE_FLASH void AudioEffectPolyverb::reset(void)
 {
-    isBlockedUpdate = true;
+    blockUpdate();
     reverb.Reset();
-    isBlockedUpdate = false;
+    unblockUpdate();
 }
 
 AUDIO_CORE_FLASH bool AudioEffectPolyverb::isActive(void)

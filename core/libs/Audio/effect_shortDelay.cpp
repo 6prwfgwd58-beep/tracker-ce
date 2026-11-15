@@ -120,6 +120,7 @@ AUDIO_CORE_FLASH void AudioEffectShortDelay::clear()
     silentSamplesCount = MAX_DELAYLINE_LENGTH;
 #ifdef AUDIO_NULL_IS_SILENCE
     quietSamplesCount = MAX_DELAYLINE_LENGTH;
+    zeroedAllSamples = MAX_DELAYLINE_LENGTH;
 #endif
     // the lines are zero from here on, the set of the current mode is the live one with the whole history valid
     ppLive = isPingpong != 0;
@@ -138,9 +139,11 @@ AUDIO_CORE_FLASH void AudioEffectShortDelay::clear()
 AUDIO_CORE_FLASH void AudioEffectShortDelay::blockUpdate()
 {
     noRefresh = true;
+    __atomic_signal_fence(__ATOMIC_SEQ_CST);
 }
 AUDIO_CORE_FLASH void AudioEffectShortDelay::unblockUpdate()
 {
+    __atomic_signal_fence(__ATOMIC_SEQ_CST);
     noRefresh = false;
 }
 
@@ -172,6 +175,7 @@ AUDIO_CORE_RAM void AudioEffectShortDelay::update(void)
         (lastFilterInRight | lastFilterInLeft | lastFilterInMono | lastFilterOutRight | lastFilterOutLeft | lastFilterOutMono) == 0 &&
         silentInput)
     {
+        syncIdleMode(isPingpong != 0);
         // Silent input, the last timeInSamples values written to the lines were zero (so the whole delay window is) and the filters are
         // at rest: delayed samples, filter outputs and the values to write are zero, as in every one of the 128 steps of process().
         // What process() would do is write 128 zeros to each line that runs, move the head and count 128 silent samples. Same state, same
@@ -186,6 +190,7 @@ AUDIO_CORE_RAM void AudioEffectShortDelay::update(void)
         monoDepth = std::min<uint32_t>(monoDepth + AUDIO_BLOCK_SAMPLES, MAX_DELAYLINE_LENGTH);
         silentSamplesCount = std::min<uint32_t>(silentSamplesCount + AUDIO_BLOCK_SAMPLES, MAX_DELAYLINE_LENGTH);
         quietSamplesCount = std::min<uint32_t>(quietSamplesCount + AUDIO_BLOCK_SAMPLES, MAX_DELAYLINE_LENGTH);
+        zeroedAllSamples = std::min<uint32_t>(zeroedAllSamples + AUDIO_BLOCK_SAMPLES, MAX_DELAYLINE_LENGTH);
         if (input != nullptr)
         {
             release(input);
@@ -275,14 +280,72 @@ __attribute__((noinline)) AUDIO_CORE_FLASH void AudioEffectShortDelay::startMode
         monoSeed = ppLive ? ppDepth : 0;
         // ping pong -> mono: left and right add up (a one sided echo keeps its level, both sides now carry it)
         lastFilterInMono = ppLive ? clamp16(lastFilterInLeft + lastFilterInRight) : 0;
-        lastFilterOutMono = ppLive ? lastFilterOutLeft + lastFilterOutRight : 0;
+        lastFilterOutMono = ppLive ? clamp16(lastFilterOutLeft + lastFilterOutRight) : 0;
     }
 }
+
+#ifdef AUDIO_NULL_IS_SILENCE
+AUDIO_CORE_RAM void AudioEffectShortDelay::syncIdleMode(bool wantPingpong)
+{
+    if ((wantPingpong ? !ppLive : !monoLive) && timeInSamples >= 1 &&
+        quietSamplesCount >= timeInSamples &&
+        (lastFilterInRight | lastFilterInLeft | lastFilterInMono | lastFilterOutRight |
+         lastFilterOutLeft | lastFilterOutMono) == 0)
+    {
+        const uint32_t count = std::min<uint32_t>(timeInSamples, MAX_DELAYLINE_LENGTH);
+        if (zeroedAllSamples < count)
+        {
+            const uint32_t startIdx = (headIdx - count) & delaylineLengthMask;
+            const uint32_t firstChunk =
+              std::min<uint32_t>(count, MAX_DELAYLINE_LENGTH - startIdx);
+            const uint32_t secondChunk = count - firstChunk;
+            if (wantPingpong)
+            {
+                memset(&pingpongDelaylineLeft[startIdx], 0, firstChunk * sizeof(int16_t));
+                memset(&pingpongDelaylineRight[startIdx], 0, firstChunk * sizeof(int16_t));
+                if (secondChunk > 0)
+                {
+                    memset(&pingpongDelaylineLeft[0], 0, secondChunk * sizeof(int16_t));
+                    memset(&pingpongDelaylineRight[0], 0, secondChunk * sizeof(int16_t));
+                }
+            }
+            else
+            {
+                memset(&monoDelayline[startIdx], 0, firstChunk * sizeof(int16_t));
+                if (secondChunk > 0)
+                {
+                    memset(&monoDelayline[0], 0, secondChunk * sizeof(int16_t));
+                }
+            }
+        }
+        ppLive = wantPingpong;
+        monoLive = !wantPingpong;
+        ppWeight = wantPingpong ? kFadeOne : 0;
+        if (zeroedAllSamples >= MAX_DELAYLINE_LENGTH)
+        {
+            ppDepth = MAX_DELAYLINE_LENGTH;
+            monoDepth = MAX_DELAYLINE_LENGTH;
+        }
+        else
+        {
+            ppDepth = wantPingpong ? count : 0;
+            monoDepth = wantPingpong ? 0 : count;
+            quietSamplesCount = count;
+            zeroedAllSamples = count;
+        }
+        ppSeed = 0;
+        monoSeed = 0;
+    }
+}
+#endif
 
 // True when the block can run one of the two fast loops: only the requested set is live and its stored lines cover the delay time.
 // Otherwise (a mode switch crossfade, or a set that has not been written for timeInSamples yet) runSwitching() does the block.
 AUDIO_CORE_RAM bool AudioEffectShortDelay::prepareBlock(bool wantPingpong)
 {
+#ifdef AUDIO_NULL_IS_SILENCE
+    syncIdleMode(wantPingpong);
+#endif
     if (wantPingpong ? !ppLive : !monoLive)
     {
         if (!ppLive && !monoLive)
@@ -586,6 +649,7 @@ AUDIO_CORE_RAM bool AudioEffectShortDelay::processBlock(int16_t input[],
         anyNonZero = runSwitching(input, outputLeft, outputRight, sampleCount, wantPingpong);
     }
 #ifdef AUDIO_NULL_IS_SILENCE
+    zeroedAllSamples = 0;
     if constexpr (kTrackQuiet)
     {
         quietSamplesCount =

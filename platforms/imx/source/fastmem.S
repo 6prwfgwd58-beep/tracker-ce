@@ -1,14 +1,15 @@
 @ Word/burst memcpy, memmove, memset, and memcmp in zero-wait-state ITCM for i.MX RT1051 (Tracker+ / Mini).
 @
-@ platforms/imx links against newlib-nano (-specs=nano.specs), whose libc_nano.a provides
-@ byte-at-a-time loops in QSPI Flash for these routines (except memmove/memset/memcmp staying
-@ completely unoptimized). Placing them in .audio_ram_functions locates them in SRAM_ITC via
-@ platforms/imx/linker/linkerScript.ld and shadows libc_nano.a's archive members.
+@ platforms/imx links against newlib-nano (-specs=nano.specs), whose lib_a-memcpy-stub.o was
+@ already placed in SRAM_ITC on main, while memmove, memset, and memcmp ran as byte loops in
+@ QSPI Flash. These four symbols override libc_nano.a's implementations firmware-wide and are
+@ placed in .fastmem_ram_functions (linked at the end of .data_RAM2 / SRAM_ITC via
+@ platforms/imx/linker/linkerScript.ld, away from address 0x00000008).
 
 	.syntax unified
 	.cpu	cortex-m7
 	.thumb
-	.section .audio_ram_functions, "ax", %progbits
+	.section .fastmem_ram_functions, "ax", %progbits
 
 @ void* memcpy(void* dst, const void* src, size_t len)
 	.global	memcpy

@@ -644,12 +644,6 @@ void audioEngine::connectSynthToMixer(MixerAndFxs<kVoices>* mixerAndFxs, SynthVo
                               mixerAndFxs->getSynthRMS(synthChannel, MixerAndFxChannelType::kRight),
                               0));
     }
-#ifdef AUDIO_NULL_IS_SILENCE
-    synth->getPolySynth()->setSendMixers(
-      mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kDelay),
-      mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kReverb),
-      MixerAndFxs<kVoices>::kFirstSynthSendInput);
-#endif
 }
 
 void audioEngine::connectSynthToExportQueue(SynthVoice* synth, ExportQueues* exportQueues)
@@ -1115,9 +1109,6 @@ void audioEngine::setLimiterThreshold(uint16_t threshold)
 
 void audioEngine::setLimiterSidechain(uint8_t sidechain)
 {
-    limiter[AudioOutput::OutputChannels::kLeft]->setSidechainEnable((bool)sidechain);
-    limiter[AudioOutput::OutputChannels::kRight]->setSidechainEnable((bool)sidechain);
-
     uint8_t mux = sidechain ? sidechain - 1 : 0;
 
 #ifndef PLATFORM_IMX
@@ -1129,6 +1120,9 @@ void audioEngine::setLimiterSidechain(uint8_t sidechain)
     output.getLimiterSidechainMux(AudioOutput::OutputChannels::kRight)->setOut(mux);
     output.getLimiterSidechainMux(AudioOutput::OutputChannels::kRight)->setEnabled(sidechain != 0);
 #endif
+    __atomic_signal_fence(__ATOMIC_SEQ_CST);
+    limiter[AudioOutput::OutputChannels::kLeft]->setSidechainEnable((bool)sidechain);
+    limiter[AudioOutput::OutputChannels::kRight]->setSidechainEnable((bool)sidechain);
 }
 #ifdef FEATURE_SYNTH
 
@@ -2359,6 +2353,14 @@ void audioEngine::clearReverb()
         setSynthReverbSend(synthIdx, AMP_MUTED);
     }
 #endif
+}
+
+void audioEngine::resetDelay()
+{
+    if (delay != nullptr)
+    {
+        delay->clear();
+    }
 }
 
 void audioEngine::resetLimiter()

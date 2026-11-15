@@ -158,6 +158,7 @@ void InstrumentImpl::onPatchReset()
     }
     postProcessTailing = false;
     silentPostBlocks = 0;
+    voiceSleepEnabled = true;
 }
 
 void InstrumentImpl::reset()
@@ -179,6 +180,12 @@ void InstrumentImpl::assignPatch(std::shared_ptr<Patch> patch)
     patch->subscribeParamUpdates(shared_from_this());
 
     patchAssigned = std::move(patch);
+
+    const auto& meta = patchAssigned->getMetadata();
+    supportsIdleSleep = meta.supportsIdleSleep;
+    voiceSleepParamId = meta.voiceSleepParamId;
+    voiceSleepEnabled =
+      (voiceSleepParamId >= 0) ? (patchAssigned->getParamValue(voiceSleepParamId).value_or(1.0f) != 0.0f) : true;
 
     auto voicesRecreated = recreateVoices(static_cast<int>(std::ssize(voices)));
 
@@ -375,6 +382,12 @@ void InstrumentImpl::onParamChange(int paramId,
                                    Patch::ParamChangeSource source,
                                    tiny_optional<int> voiceId)
 {
+    if (voiceSleepParamId >= 0 && paramId == voiceSleepParamId)
+    {
+        voiceSleepEnabled = (newValue.value_or(1.0f) != 0.0f);
+        return;
+    }
+
     if (voiceId)
     {
         assert(voiceId < std::ssize(voices));
@@ -600,16 +613,28 @@ void InstrumentImpl::renderAudioBuffer(std::optional<AudioBufferStereoRef> input
         return;
     }
 
+    const bool sleepAllowed = shouldSleepWhenIdle();
     bool anyActive = false;
+    bool anyRendered = false;
     for (auto& voice : voices)
     {
-        if (!voice.voice->isActive())
+        if (voice.voice->isActive())
+        {
+            anyActive = true;
+        }
+        else if (sleepAllowed)
         {
             continue;
         }
-        if (!anyActive)
+        else if (voice.voice->hasTickIdle())
         {
-            anyActive = true;
+            voice.voice->tickIdle(ctx);
+            continue;
+        }
+
+        if (!anyRendered)
+        {
+            anyRendered = true;
             voice.voice->renderVoiceAudio(ctx, inputBuffer, outputBuffer, auxOutBuffer);
         }
         else
@@ -632,18 +657,24 @@ void InstrumentImpl::renderAudioBuffer(std::optional<AudioBufferStereoRef> input
         }
     }
 
-    if (!anyActive)
+    if (!anyRendered)
     {
         std::ranges::fill(outputBuffer.at(0), 0.0f);
         std::ranges::fill(outputBuffer.at(1), 0.0f);
     }
 
     const bool hasPP = voices[0].voice->hasPostProcess();
+    const bool runFullLegacyPostProcess =
+      hasPP && !sleepAllowed && !voices[0].voice->hasTickIdle();
     if (anyActive)
     {
         voices[0].voice->renderPostProcessAudio(ctx, outputBuffer);
         postProcessTailing = hasPP;
         silentPostBlocks = 0;
+    }
+    else if (runFullLegacyPostProcess)
+    {
+        voices[0].voice->renderPostProcessAudio(ctx, outputBuffer);
     }
     else if (postProcessTailing && hasPP)
     {
@@ -689,11 +720,33 @@ bool InstrumentImpl::isIdle() const
     {
         return true;
     }
-    if (postProcessTailing)
+    if (!shouldSleepWhenIdle() || postProcessTailing)
     {
         return false;
     }
     return std::ranges::none_of(voices, [](const auto& v) { return v.voice->isActive(); });
+}
+
+bool InstrumentImpl::prepareSilentBlock()
+{
+    if (isIdle())
+    {
+        return true;
+    }
+    if (postProcessTailing || voices.empty() || !voices[0].voice->hasTickIdle())
+    {
+        return false;
+    }
+    if (std::ranges::any_of(voices, [](const auto& v) { return v.voice->isActive(); }))
+    {
+        return false;
+    }
+    const InstrumentVoice::InstrumentVoiceContext ctx = { getTempo() };
+    for (auto& voice : voices)
+    {
+        voice.voice->tickIdle(ctx);
+    }
+    return true;
 }
 float InstrumentImpl::getTempo() const
 {

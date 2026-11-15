@@ -59,7 +59,7 @@ class AudioEffectShortDelay : public AudioStream
     audio_block_t* inputQueueArray[1];
     uint32_t timeInSamples;
     uint8_t feedback;
-    bool noRefresh;
+    volatile bool noRefresh;
     uint8_t
       isPingpong; // uint8_t allows to use conditionally execution instead conditionally branch
     bool isSync;
@@ -99,9 +99,12 @@ class AudioEffectShortDelay : public AudioStream
     template<bool kTrackQuiet>
     bool processBlock(int16_t input[], int16_t outputLeft[], int16_t outputRight[], int sampleCount);
 #ifdef AUDIO_NULL_IS_SILENCE
+    void syncIdleMode(bool wantPingpong);
     // Consecutive samples (whole blocks) in which the values written to the lines that run were zero: the last timeInSamples of them
     // fill the delay window. With the filters at rest a block of silent input can be skipped bit exactly.
     uint32_t quietSamplesCount = 0;
+    // Consecutive samples back from headIdx where all three lines (mono + ping-pong L/R) are known zero.
+    uint32_t zeroedAllSamples = MAX_DELAYLINE_LENGTH;
 #endif
 };
 

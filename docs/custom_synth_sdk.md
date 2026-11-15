@@ -69,7 +69,7 @@ Recommended for full-featured engines sharing code cleanly with Polyend's `Patch
 | :--- | :--- |
 | [`synth-plugin-sdk/include/psyn/psyn_cpp_bridge.h`](../synth-plugin-sdk/include/psyn/psyn_cpp_bridge.h) | Translates any `polysynth::InstrumentVoice` subclass into the C `.psyn` plugin ABI via `PSYN_REGISTER_CPP_VOICE(VoiceClass)`. |
 | [`synth/include/PolySynth/sdk/SynthVoiceSDK.h`](../synth/include/PolySynth/sdk/SynthVoiceSDK.h) | Header-only C++20 base class `CustomSynthVoice`, `ParamHelper`, math helpers, standard `MidiCCs`, and formatters. |
-| [`synth/include/PolySynth/sdk/InstrumentVoice.h`](../synth/include/PolySynth/sdk/InstrumentVoice.h) | Pure virtual voice interface (`onMidiEvent`, `onParamChange`, `renderVoiceAudio`, `renderPostProcessAudio`, `hasPostProcess`, note query methods). |
+| [`synth/include/PolySynth/sdk/InstrumentVoice.h`](../synth/include/PolySynth/sdk/InstrumentVoice.h) | Pure virtual voice interface (`onMidiEvent`, `onParamChange`, `renderVoiceAudio`, `renderPostProcessAudio`, `hasPostProcess`, `tickIdle`, `hasTickIdle`, note query methods). |
 | [`synth/include/PolySynth/sdk/InstrumentType.h`](../synth/include/PolySynth/sdk/InstrumentType.h) | Engine factory interface (`createMetadata`, `createVoice`). |
 | [`synth/include/PolySynth/Core.h`](../synth/include/PolySynth/Core.h) | Core types (`sample_t = float`, `note_t = uint8_t`, `AudioBufferRef`, `AudioBufferStereoRef`, `kNoteA4 = 69`, `kMaxMacroCount = 8`, `kUserMacroCount = 6`). |
 | [`synth/include/PolySynth/Patch.h`](../synth/include/PolySynth/Patch.h) | `Patch`, `Patch::Metadata`, `Param`, `Macro`, `SampleSlot`, `EditorLayout`, `EditorElement`, `OutputChannels`. |
@@ -79,7 +79,7 @@ Recommended for full-featured engines sharing code cleanly with Polyend's `Patch
 ### Mode B: Pure C (`psyn_plugin.h`)
 | Header | Purpose |
 | :--- | :--- |
-| [`synth-plugin-sdk/include/psyn/psyn_plugin.h`](../synth-plugin-sdk/include/psyn/psyn_plugin.h) | Self-contained 128-byte `PsynHeader` (`PSYN_MAGIC = 0x4E595350`, `PSYN_API_VERSION = 1`, `PSYN_FLAG_HAS_SAMPLE_SLOTS = 0x0001`), `PsynHostApi` callbacks, `PsynPluginApi` vtable, and `psyn_plugin_entry(const PsynHostApi* host)`. |
+| [`synth-plugin-sdk/include/psyn/psyn_plugin.h`](../synth-plugin-sdk/include/psyn/psyn_plugin.h) | Self-contained 128-byte `PsynHeader` (`PSYN_MAGIC = 0x4E595350`, `PSYN_API_VERSION = 1`, `PSYN_FLAG_HAS_SAMPLE_SLOTS = 0x0001`, `PSYN_FLAG_SUPPORTS_IDLE_SLEEP = 0x0002`, `PSYN_FLAG_HAS_VOICE_TICK_IDLE = 0x0004`), `PsynHostApi` callbacks, `PsynPluginApi` vtable (plus optional `voice_tick_idle` when `PSYN_FLAG_HAS_VOICE_TICK_IDLE` is set), and `psyn_plugin_entry(const PsynHostApi* host)`. |
 
 ---
 
@@ -95,7 +95,7 @@ The Tracker audio engine supports **3 active synth slots** (`SYN 1`, `SYN 2`, `S
    - Stereo voices receive both Left (`outputBuffer[0]`) and Right (`outputBuffer[1]`).
    - Mono voices render into `outputBuffer[0]`.
    - Voices may optionally write stereo post-processing (`renderPostProcessAudio`) or scope waveform previews (`renderGraph` / `voice_render_graph`).
-   - When all voices return `isActive() == false` (and any post-processing tail settles), `PolySynth` marks the part idle and skips rendering/mixing until the next note-on or parameter wake.
+   - When per-patch `Voice Sleep` is `On` (default for supporting engines), once all voices return `isActive() == false` (and any post-processing tail settles), `PolySynth` marks the part idle and skips rendering/mixing until the next note-on. When `Voice Sleep` is `Off`, engines providing `tickIdle(const InstrumentVoiceContext&)` advance free-running oscillator/modulation state on idle voices while omitting silent output block allocation, whereas engines without `tickIdle()` continue full legacy rendering.
 
 ---
 
@@ -387,13 +387,15 @@ The Tracker Patch Editor displays a **2x6 grid of tiles**: the **top 6 tiles** c
 1. **Stateless Parameter Handlers (`static_assert(std::is_empty_v<Fn>)`):**
    `sdk::ParamHelper::addParam` stores each handler as a 4-byte stateless function pointer (`void (*)(VoiceType&, Patch::optional_paramvalue_t)`). Handler lambdas must not capture variables (`[]` only), keeping `.bss` overhead near zero (`4 bytes * numParams`).
 2. **Zero Allocations or Blocking Calls in Audio Loops:**
-   Never allocate heap memory (`new`, `malloc`, `std::vector::push_back`, `std::string`) or perform SD card I/O inside `renderVoiceAudio()`, `renderPostProcessAudio()`, `onNoteOn()`, `onNoteOff()`, or `onParamChange()`.
+   Never allocate heap memory (`new`, `malloc`, `std::vector::push_back`, `std::string`) or perform SD card I/O inside `renderVoiceAudio()`, `renderPostProcessAudio()`, `tickIdle()`, `onNoteOn()`, `onNoteOff()`, or `onParamChange()`.
 3. **Budget Within the `.psyn` SDRAM Arena (`1,920 KB` Total):**
    Keep `.text` + `.rodata` + `.data` + `.bss` + `slot_alloc` usage compact so multiple engines remain co-resident in `PsynLoader::kArenaSize` (`1,920 KB`) without triggering frequent LRU evictions when switching synth parts (`SYN 1`–`SYN 3`). Keep `__fp16` parameter ranges within `[-65500, +65500]`.
 4. **Hardware Single-Precision FPU (`VFPv5`):**
    Use single-precision `float` (`0.0f`, `std::sinf`, `std::powf`, `std::fabsf`), never `double`. Hoist per-block filter/envelope/frequency computations outside the `128`-sample audio loop, and band-limit sharp waveform discontinuities (e.g. PolyBLEP).
-5. **Accurate `isActive()` & Post-Process Sleep (`hasPostProcess()` / `voice_render_post_process`):**
-   `InstrumentImpl` puts a synth slot into zero-CPU null-silence sleep once all voices return `isActive() == false` (`voice_is_active` in C) and any post-processing tail settles (`32` consecutive blocks `< 1e-5f`, `~93 ms`). Voices must return `false` from `isActive()` once their amplitude envelope finishes, and Pure C `.psyn` plugins without global post-FX should set `voice_render_post_process = NULL` (or leave `InstrumentVoice::hasPostProcess()` as `false` for direct C++ subclasses) so idle sleep engages immediately without running tail blocks.
+5. **Idle Sleep, Per-Patch `Voice Sleep`, `tickIdle()`, & Post-Process Sleep:**
+   - **ABI Compatibility & Opt-In Flags:** Legacy / unflagged ABI v1 `.psyn` plugins (without `PSYN_FLAG_SUPPORTS_IDLE_SLEEP = 0x0002`, and Pure C plugins with `voice_is_active == NULL`) stay continuously active so existing proprietary or free-running engines do not lose oscillator/LFO/modulation phase. Opt in by passing `--supports-idle-sleep 1` to `psyn_builder.py` (this also enables the per-patch `Voice Sleep` switch in the `Voice` layout, defaulting to `On`).
+   - **Free-Running Phase Continuity (`tickIdle()`):** When `Voice Sleep` is `Off` and `!isActive()`, engines that implement `InstrumentVoice::tickIdle(const InstrumentVoiceContext&)` / `void (*voice_tick_idle)(void* voice, const PsynVoiceContext* ctx)` (`PSYN_FLAG_HAS_VOICE_TICK_IDLE = 0x0004`, `--has-voice-tick-idle 1`) advance free-running oscillators/LFOs/modulators lightly without full audio rendering or silent block allocation (`prepareSilentBlock()`), while engines without `tickIdle()` run full legacy rendering. When `Voice Sleep` is `On`, inactive voices sleep at zero CPU (`tickIdle()` is not called).
+   - **Accurate `isActive()` & Compile-Time Bridge Detection:** Voices must return `false` from `isActive()` (`voice_is_active` in C) once their amplitude envelope finishes so `InstrumentImpl` can engage sleep after any post-processing tail settles (`32` consecutive blocks `< 1e-5f`, `~93 ms`). Pure C plugins without global post-FX should set `voice_render_post_process = NULL`. For C++ `.psyn` plugins built with `psyn_cpp_bridge.h`, `std::is_same_v` detects at compile time whether your voice overrides `InstrumentVoice::renderPostProcessAudio` and `InstrumentVoice::tickIdle`, leaving unoverridden `PsynPluginApi` function pointers `nullptr` so voices without post-FX sleep immediately without waiting `32` tail blocks (note direct C++ built-in voices continue to override `hasPostProcess()` / `hasTickIdle()`).
 
 ---
 

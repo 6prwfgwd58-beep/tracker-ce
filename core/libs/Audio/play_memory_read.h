@@ -5,8 +5,9 @@
 // and playhead with no class state, matching the scalar loop arithmetic bit-for-bit.
 //
 // Linear interpolation reads a sample and its neighbour. Both are adjacent int16_t values in memory,
-// so one 32-bit load fetches both (avoiding two separate halfword transactions on external SDRAM).
-// Unaligned 32-bit loads are handled natively by Cortex-M4/M7 hardware (UNALIGN_TRP is clear).
+// so load2() emits a single 32-bit load (ldr) instead of two ldrh instructions: even sample indices
+// complete in one 32-bit aligned bus read, while odd sample indices are 2-byte-aligned unaligned
+// word loads that Cortex-M4/M7 hardware splits into two bus transactions automatically (UNALIGN_TRP is clear).
 
 #include <stdint.h>
 

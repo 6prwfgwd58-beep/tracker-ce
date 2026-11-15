@@ -20,12 +20,10 @@ static inline __attribute__((always_inline)) int16_t clipToInt16(float x)
 
 // send: block for both pre-FX send mixers (clip at 0 dB), post: part output (clip at postGainAmp).
 // reuseUnmodifiedMono: part at 0 dB with mono output and no aux sends (one sample converts both).
-// skipSendBlocks: pre-FX sends are both silenced, so only post is built.
 template<int kBlockSamples>
 static inline __attribute__((always_inline)) void monoPart(const float* src,
                                                            float postGainAmp,
                                                            bool reuseUnmodifiedMono,
-                                                           bool skipSendBlocks,
                                                            int16_t* send,
                                                            int16_t* post)
 {
@@ -36,13 +34,6 @@ static inline __attribute__((always_inline)) void monoPart(const float* src,
             const int16_t v = clipToInt16(src[i]);
             send[i] = v;
             post[i] = v;
-        }
-    }
-    else if (skipSendBlocks)
-    {
-        for (int i = 0; i < kBlockSamples; i++)
-        {
-            post[i] = clipToInt16(src[i] * postGainAmp);
         }
     }
     else

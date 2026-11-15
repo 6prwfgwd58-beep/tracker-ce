@@ -191,10 +191,19 @@ AUDIO_CORE_RAM void AudioFilterStateVariable::update_fixed(const int16_t* in, in
 #ifdef AUDIO_NULL_IS_SILENCE
 AUDIO_CORE_RAM bool AudioFilterStateVariable::isSettledOnSilence() const
 {
-    if (lastupdate_fmult != setting_fmult || lastupdate_damp != setting_damp)
+    if (lastupdate_fmult != setting_fmult || lastupdate_damp != setting_damp ||
+        state_inputprev != 0)
     {
         return false;
     }
+    constexpr int32_t kSubLsbStateLimit = 1 << kInputShift;
+    constexpr int32_t kSubLsbPassLimit = 1 << (kInputShift + 1);
+    if (state_lowpass > -kSubLsbStateLimit && state_lowpass < kSubLsbStateLimit &&
+        state_bandpass > -kSubLsbStateLimit && state_bandpass < kSubLsbStateLimit)
+    {
+        return true;
+    }
+
     const int32_t fmult = setting_fmult;
     const int32_t damp = setting_damp;
     int32_t lowpass = state_lowpass;
@@ -227,8 +236,8 @@ AUDIO_CORE_RAM bool AudioFilterStateVariable::isSettledOnSilence() const
     {
         passSum = 0;
     }
-    return state_inputprev == 0 && lowpass == state_lowpass && bandpass == state_bandpass &&
-           signed_saturate_rshift(passSum, 16, kInputShift + 1) == 0;
+    return lowpass == state_lowpass && bandpass == state_bandpass &&
+           passSum > -kSubLsbPassLimit && passSum < kSubLsbPassLimit;
 }
 #endif
 
@@ -262,7 +271,11 @@ AUDIO_CORE_RAM void AudioFilterStateVariable::update(void)
             }
             if (isSettledOnSilence())
             {
+                state_lowpass = 0;
+                state_bandpass = 0;
                 state_outputprev = 0;
+                lastupdate_fmult = setting_fmult;
+                lastupdate_damp = setting_damp;
                 return;
             }
         }

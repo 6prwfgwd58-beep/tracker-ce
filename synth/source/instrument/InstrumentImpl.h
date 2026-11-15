@@ -73,6 +73,7 @@ class InstrumentImpl final
                            std::span<AudioBufferRef> auxOutBuffer);
 
     [[nodiscard]] bool isIdle() const;
+    [[nodiscard]] bool prepareSilentBlock();
 
     void onMidiEvent(const MidiEvent& event, MidiSource::Type sourceType, int sourceId);
 
@@ -113,6 +114,12 @@ class InstrumentImpl final
     static constexpr sample_t kPostProcessQuietThreshold = 1.0e-5f;
     bool postProcessTailing = false;
     uint8_t silentPostBlocks = 0;
+
+    bool supportsIdleSleep = false;
+    int voiceSleepParamId = -1;
+    bool voiceSleepEnabled = true;
+
+    [[nodiscard]] bool shouldSleepWhenIdle() const { return supportsIdleSleep && voiceSleepEnabled; }
 
     InstrumentImpl(int instrumentId,
                    std::shared_ptr<InstrumentTypeRegistry> instrumentTypeRegistry_);

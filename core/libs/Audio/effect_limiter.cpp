@@ -21,34 +21,41 @@ AUDIO_CORE_FLASH void AudioEffectLimiter::setThreshold(uint16_t ts)
 {
     uint8_t quantizedThresholdIndex = mapClamped<int>(ts, 0, MAX_SIGNED_16BIT, 0, 100);
     threshold = limiterThresholdValues[quantizedThresholdIndex];
+#ifdef AUDIO_NULL_IS_SILENCE
+    __atomic_signal_fence(__ATOMIC_SEQ_CST);
+    relaxed = false;
+#endif
 }
 AUDIO_CORE_FLASH void AudioEffectLimiter::setAttack(uint16_t a)
 {
-#ifdef AUDIO_NULL_IS_SILENCE
-    relaxed = false;
-#endif
     if (mtProject.values.limiterMode == limiterModeSubtle)
         attackTime = 1 - expf(-2.2f * (1000.0f / (44100.0f * a)));
     else if (mtProject.values.limiterMode == limiterModeHard)
         attackTime = a / 1000.0f;
+#ifdef AUDIO_NULL_IS_SILENCE
+    __atomic_signal_fence(__ATOMIC_SEQ_CST);
+    relaxed = false;
+#endif
 }
 AUDIO_CORE_FLASH void AudioEffectLimiter::setRelease(float r)
 {
-#ifdef AUDIO_NULL_IS_SILENCE
-    relaxed = false;
-#endif
     if (mtProject.values.limiterMode == limiterModeSubtle)
         releaseTime = 1 - expf(-2.2f * (1000.0f / (44100.0f * r)));
     else if (mtProject.values.limiterMode == limiterModeHard)
         releaseTime = r / 1000.0f;
+#ifdef AUDIO_NULL_IS_SILENCE
+    __atomic_signal_fence(__ATOMIC_SEQ_CST);
+    relaxed = false;
+#endif
 }
 
 AUDIO_CORE_FLASH void AudioEffectLimiter::setSidechainEnable(bool isEnable)
 {
+    isSideChainEnable = isEnable;
 #ifdef AUDIO_NULL_IS_SILENCE
+    __atomic_signal_fence(__ATOMIC_SEQ_CST);
     relaxed = false;
 #endif
-    isSideChainEnable = isEnable;
 }
 
 AUDIO_CORE_FLASH float AudioEffectLimiter::getAverageGainChange()

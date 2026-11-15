@@ -212,6 +212,16 @@ bool SynthImpl::isInstrumentIdle(int instrumentId) const
     return instruments[instrumentId]->impl->isIdle();
 }
 
+bool SynthImpl::prepareSilentInstrument(int instrumentId)
+{
+    if (instrumentId < 0 || instrumentId >= std::ssize(instruments) ||
+        instruments[instrumentId] == nullptr)
+    {
+        return true;
+    }
+    return instruments[instrumentId]->impl->prepareSilentBlock();
+}
+
 void SynthImpl::updateAudio()
 {
     std::ranges::for_each(getComponents(), [](auto& component) { component->updateAudio(); });
