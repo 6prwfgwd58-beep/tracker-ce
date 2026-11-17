@@ -18,6 +18,14 @@ float AudioPlayMemory::wt2048Note[NOTE_LOOKUP_SIZE];
 bool AudioPlayMemory::isHeadroomEnabled = false;
 bool AudioPlayMemory::isSnapToZeroEnabled = false;
 
+// The tune is limited against the note that starts, not against the one before it, and
+// setGlide() gets its note from the audio engine, so a note plus the tune can lie outside
+// the note table.
+static int tunedNoteIdx(int note, int tune)
+{
+    return clamp<int>(note + tune, MIN_NOTE, MAX_NOTE - 1);
+}
+
 void AudioPlayMemory::initNotesLookup(bool applyClockCorrection)
 {
     constexpr int kMiddleNoteIdx = 60; // C5
@@ -185,6 +193,10 @@ void AudioPlayMemory::init(Timer* timer, int channel, int voiceIdx)
 //**************************************************************************************PLAY
 AUDIO_CORE_FLASH uint8_t AudioPlayMemory::play(uint8_t instrIdx, int8_t note)
 {
+    // The play functions limit the note at the top only, and index the note table with it.
+    if (note < MIN_NOTE)
+        note = MIN_NOTE;
+
     switch (mtProject.instrument[instrIdx].playMode)
     {
         case playModeSingleShot: playSingleShot(instrIdx, note); break;
@@ -566,8 +578,9 @@ void AudioPlayMemory::setLP2(
 void AudioPlayMemory::setGlide(uint16_t value, int8_t currentNote, uint8_t instr_idx)
 {
     uint32_t localSampleConstrainsGlide = (uint32_t)(value * 44.1);
-    float localGlideControl = ((float)notes[currentNote + mtProject.instrument[instr_idx].tune] -
-                               (float)notes[lastNote + mtProject.instrument[instr_idx].tune]) /
+    int8_t tune = mtProject.instrument[instr_idx].tune;
+    float localGlideControl = ((float)notes[tunedNoteIdx(currentNote, tune)] -
+                               (float)notes[tunedNoteIdx(lastNote, tune)]) /
                               localSampleConstrainsGlide;
     AudioNoInterrupts();
     constrainsInSamples.pitchSmoothing = localSampleConstrainsGlide;
@@ -1197,14 +1210,14 @@ void AudioPlayMemory::setStartPitch(uint8_t note)
     if (currentPlayMode == playModeWavetable)
     {
         if ((lastNote >= 0) && (currentGlide != 0))
-            pitchControl = (float)wt_notes[lastNote + currentTune];
+            pitchControl = (float)wt_notes[tunedNoteIdx(lastNote, currentTune)];
         else
             pitchControl = (float)wt_notes[note + currentTune];
     }
     else
     {
         if ((lastNote >= 0) && (currentGlide != 0))
-            pitchControl = (float)notes[lastNote + currentTune];
+            pitchControl = (float)notes[tunedNoteIdx(lastNote, currentTune)];
         else
             pitchControl = (float)notes[note + currentTune];
     }
@@ -1283,7 +1296,7 @@ void AudioPlayMemory::calculateGlidePitch(uint8_t note)
             constrainsInSamples.pitchSmoothing = (uint32_t)((float)currentGlide * 44.1);
 
             float localPitch1 = (float)wt_notes[note + currentTune];
-            float localPitch2 = (float)wt_notes[lastNote + currentTune];
+            float localPitch2 = (float)wt_notes[tunedNoteIdx(lastNote, currentTune)];
             if ((lastNote >= 0) && (lastNote != note))
                 pitchSmoothingControl =
                   (localPitch1 - localPitch2) / constrainsInSamples.pitchSmoothing;
@@ -1303,7 +1316,7 @@ void AudioPlayMemory::calculateGlidePitch(uint8_t note)
             constrainsInSamples.pitchSmoothing = (uint32_t)((float)currentGlide * 44.1);
 
             float localPitch1 = (float)notes[note + currentTune];
-            float localPitch2 = (float)notes[lastNote + currentTune];
+            float localPitch2 = (float)notes[tunedNoteIdx(lastNote, currentTune)];
             if ((lastNote >= 0) && (lastNote != note))
                 pitchSmoothingControl =
                   (localPitch1 - localPitch2) / constrainsInSamples.pitchSmoothing;
