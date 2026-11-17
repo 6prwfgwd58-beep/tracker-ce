@@ -1,6 +1,6 @@
 // PTFX_NAME: Convolution Reverb
 // PTFX_AUTHOR: Emanuele Lapponi
-// PTFX_FLAGS: EFFECT, STEREO, IMX_ONLY
+// PTFX_FLAGS: EFFECT, STEREO
 // PTFX_SCRATCH: 376832
 
 #include "tracker_plugin.h"
