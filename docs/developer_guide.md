@@ -112,7 +112,7 @@ All three devices share the same `core/` codebase and are differentiated at comp
 | Target Scope | Preprocessor Condition | Matching Hardware & Typical Use Case |
 | :--- | :--- | :--- |
 | **IMX Only** (Tracker+ & Mini) | `#ifdef PLATFORM_IMX` | `600 MHz` Cortex-M7, `64 MB` SDRAM, stereo samples (`SAMPLE_CHANNELS == 2`), 16 tracks. |
-| **MK66 Only** (Original Tracker) | `#ifndef PLATFORM_IMX` | `180 MHz` Cortex-M4F, `16 MB` SDRAM, mono samples (`SAMPLE_CHANNELS == 1`), 16 tracks. |
+| **MK66 Only** (Original Tracker) | `#ifndef PLATFORM_IMX` | `180 MHz` Cortex-M4F, `16 MB` SDRAM, stereo samples (`SAMPLE_CHANNELS == 2`), 16 tracks. |
 | **Tracker Mini Only** | `#ifdef TRACKER_MINI` | Handheld controls (`interfaceButtonMiniMiddle`, D-pad, battery gauge, internal mic, no pad grid). |
 | **Desktop Form Factor** (Original & Plus) | `#ifndef TRACKER_MINI` | Shared desktop hardware: 48 RGB silicone pads, rotary jog-wheel, FM radio, line/mic inputs. |
 | **Tracker+ Exclusively** | `#if defined(PLATFORM_IMX) && !defined(TRACKER_MINI)` | Features requiring both the IMX CPU/RAM and the 48-pad desktop interface. |
