@@ -16,6 +16,7 @@ AUDIO_CORE_FLASH void AudioPlayMemory::playWavetable(uint8_t instrIdx, int8_t no
     currentInstrIdxInPlay = instrIdx;
     currentInstrIdx = instrIdx;
 
+    bool hasPitchTable = true;
     switch (mtProject.instrument[instrIdx].sample.wavetable_window_size)
     {
         case 32: wt_notes = wt32Note; break;
@@ -25,7 +26,7 @@ AUDIO_CORE_FLASH void AudioPlayMemory::playWavetable(uint8_t instrIdx, int8_t no
         case 512: wt_notes = wt512Note; break;
         case 1024: wt_notes = wt1024Note; break;
         case 2048: wt_notes = wt2048Note; break;
-        default: break;
+        default: hasPitchTable = false; break;
     }
 
     refreshStartParameters();
@@ -41,6 +42,16 @@ AUDIO_CORE_FLASH void AudioPlayMemory::playWavetable(uint8_t instrIdx, int8_t no
     lastNote = note;
 
     wavetableWindowSize = mtProject.instrument[instrIdx].sample.wavetable_window_size;
+
+    // The playhead is wrapped by one window per sample, which only holds while the pitch step is
+    // shorter than the window. That is true for the window sizes that have a pitch table. With
+    // any other size, 0 in particular, the playhead would leave the sample.
+    if (!hasPitchTable || wavetableWindowSize > currentSampleLength)
+    {
+        AudioInterrupts();
+        return;
+    }
+
     currentWindow = wavetableWindowForceFlag
                       ? forcedWavetableWindow
                       : mtProject.instrument[instrIdx].wavetableCurrentWindow;
@@ -203,4 +214,7 @@ AUDIO_CORE_FLASH audio_block_t* AudioPlayMemory::updateWavetable()
 
         return block;
     }
+
+    release(block);
+    return nullptr;
 }
