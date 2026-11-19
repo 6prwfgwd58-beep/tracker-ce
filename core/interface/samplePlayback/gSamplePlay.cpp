@@ -73,7 +73,9 @@ void cSamplePlayback::initDisplayControls()
     bgLabel = display.createControl<cBgLabel>(&prop2);
 
     playModeList.linesCount = 8;
-    playModeList.start = editorInstrument->playMode;
+    // start() picks the instrument, and it runs after this on the first visit to the screen.
+    // showPlayModeList() sets the real position before the list is drawn.
+    playModeList.start = (editorInstrument != nullptr) ? editorInstrument->playMode : 0;
     playModeList.length = playModeCount;
     playModeList.data = playModeNames;
     prop.x = (800 / 8) * 6 + 1;
@@ -731,9 +733,10 @@ void cSamplePlayback::showGranularPositionValue()
     uint32_t effectiveGrainLength =
       (currentEnvelopeGranLen > 0) ? currentEnvelopeGranLen
                                    : static_cast<uint32_t>(editorInstrument->granular.grainLength);
+    // An empty instrument has no sample to measure the grain against.
+    uint32_t sampleLength = editorInstrument->sample.length;
     uint16_t granularDisplayedLength =
-      ((uint32_t)(effectiveGrainLength * 600)) /
-      editorInstrument->sample.length;
+      sampleLength > 0 ? ((uint32_t)(effectiveGrainLength * 600)) / sampleLength : 0;
 
     granularPositionInSpectrum = currentEnvelopeGranPos * (600.0 / MAX_16BIT);
 

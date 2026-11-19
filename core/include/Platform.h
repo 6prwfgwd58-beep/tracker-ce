@@ -115,6 +115,7 @@ class UsbAudio
     virtual void beginFillData() = 0;
     virtual void fillChannelData(void* samples, int count, int channel) = 0;
     virtual void finishFillData() = 0;
+    virtual bool isOutputActive() const { return false; }
 };
 
 class UsbMidi : public Midi
@@ -426,8 +427,8 @@ class Usb
     enum class ClassType
     {
         kMidi,
-        kAudioIn,
-        kAudioOut,
+        kAudioIn,  // Audio input into Tracker (USB OUT: Host -> Device, 2ch)
+        kAudioOut, // Audio output from Tracker (USB IN: Device -> Host, 28ch)
         kStorage,
         kSerial
     };
