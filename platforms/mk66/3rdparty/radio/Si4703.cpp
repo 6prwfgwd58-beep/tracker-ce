@@ -113,9 +113,8 @@ void Si4703::powerOff()
     isInitializedProperly = 0;
 }
 
-void Si4703::setRegion(radio_region_t region, uint8_t init)
+void Si4703::setRegion(radio_region_t region, uint8_t init, bool ignoreErrors)
 {
-    bool ignoreErrors = (init != 0);
     readRegisters(ignoreErrors);
 
     si4703_registers[rSYSCONFIG2] &= ~(SPACE(0x03) | BAND(0x03)); // clear previous setting
@@ -201,6 +200,7 @@ bool Si4703::setFrequency(float freq)
             }
 
             uint32_t clearStartMs = millis();
+            bool stcCleared = false;
             while ((millis() - clearStartMs) < RADIO_I2C_TIMEOUT_MS)
             {
                 if (readRegisters() != I2cBusControllerImpl0::OperationResult::kOK)
@@ -209,9 +209,15 @@ bool Si4703::setFrequency(float freq)
                 }
                 if ((si4703_registers[rSTATUSRSSI] & STC) == 0)
                 {
+                    stcCleared = true;
                     break;
                 }
                 delay(1);
+            }
+
+            if (!stcCleared)
+            {
+                return false;
             }
         }
 
@@ -240,10 +246,6 @@ bool Si4703::setFrequency(float freq)
             }
         }
 
-        if (readRegisters() != I2cBusControllerImpl0::OperationResult::kOK)
-        {
-            return false;
-        }
         si4703_registers[rCHANNEL] &= ~TUNE; // Clear the tune after a tune has completed
         if (updateRegisters() != I2cBusControllerImpl0::OperationResult::kOK)
         {
@@ -350,7 +352,7 @@ uint8_t Si4703::readRegisters(bool ignoreErrors)
         i2cBusControllerNXP0.unblockBus();
         init(_resetPin, _sdioPin, _sclkPin, _interruptPin);
         powerOn();
-        setRegion(currentRegion, 1);
+        setRegion(currentRegion, 1, true);
 
         // Serial.println("repeating read after reinit");
 
@@ -418,7 +420,7 @@ uint8_t Si4703::updateRegisters(bool ignoreErrors)
             i2cBusControllerNXP0.unblockBus();
             init(_resetPin, _sdioPin, _sclkPin, _interruptPin);
             powerOn();
-            setRegion(currentRegion, 1);
+            setRegion(currentRegion, 1, true);
         }
     }
 
@@ -448,7 +450,11 @@ void Si4703::stateMachineSeek()
             case notInitialized:
                 break;
             case seekInit:
-                readRegisters();
+                if (readRegisters() != I2cBusControllerImpl0::OperationResult::kOK)
+                {
+                    seek_control.seek_state = notInitialized;
+                    break;
+                }
 
                 si4703_registers[rPOWERCFG] &= ~SKMODE;
                 if (seek_control.seek_dir == SEEK_DOWN)
@@ -461,7 +467,11 @@ void Si4703::stateMachineSeek()
                 }
 
                 si4703_registers[rPOWERCFG] |= SEEK; // Start seek
-                updateRegisters();                   // Seeking will now start
+                if (updateRegisters() != I2cBusControllerImpl0::OperationResult::kOK)
+                {
+                    seek_control.seek_state = notInitialized;
+                    break;
+                }
 
                 seek_control.seek_state = loopUntilSTC;
 
@@ -469,7 +479,11 @@ void Si4703::stateMachineSeek()
 
             case loopUntilSTC:
 
-                readRegisters();
+                if (readRegisters() != I2cBusControllerImpl0::OperationResult::kOK)
+                {
+                    seek_control.seek_state = notInitialized;
+                    break;
+                }
                 if ((si4703_registers[rSTATUSRSSI] & STC) != 0)
                 {
                     seek_control.seek_state = stationFound;
@@ -482,17 +496,29 @@ void Si4703::stateMachineSeek()
                 break;
 
             case stationFound:
-                readRegisters();
+                if (readRegisters() != I2cBusControllerImpl0::OperationResult::kOK)
+                {
+                    seek_control.seek_state = notInitialized;
+                    break;
+                }
                 // valueSFBL=si4703_registers[rSTATUSRSSI] & SF_BL; //Store the value of SFBL
                 si4703_registers[rPOWERCFG] &= ~SEEK; // Clear the seek bit after seek has completed
-                updateRegisters();
+                if (updateRegisters() != I2cBusControllerImpl0::OperationResult::kOK)
+                {
+                    seek_control.seek_state = notInitialized;
+                    break;
+                }
 
                 seek_control.seek_state = seekDeinit;
 
                 break;
 
             case seekDeinit:
-                readRegisters();
+                if (readRegisters() != I2cBusControllerImpl0::OperationResult::kOK)
+                {
+                    seek_control.seek_state = notInitialized;
+                    break;
+                }
                 if ((si4703_registers[rSTATUSRSSI] & STC) == 0)
                 {
                     seek_control.seek_state = callback;
@@ -500,7 +526,10 @@ void Si4703::stateMachineSeek()
                 else
                 {
                     si4703_registers[rPOWERCFG] &= ~SEEK;
-                    updateRegisters();
+                    if (updateRegisters() != I2cBusControllerImpl0::OperationResult::kOK)
+                    {
+                        seek_control.seek_state = notInitialized;
+                    }
                 }
 
                 break;

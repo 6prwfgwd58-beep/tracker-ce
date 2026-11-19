@@ -110,6 +110,21 @@ void turnOffRecorder();
 
 char recordingDirPath[30];
 
+static int calcMaxRadioChannel(float baseFreq, float spacing)
+{
+    if (spacing <= 0.0f)
+    {
+        return 0;
+    }
+
+    return (int)((Radio::kMaxAudioFrequencyMHz - baseFreq) / spacing + 0.001f);
+}
+
+static int calcRadioChannel(float freq, float baseFreq, float spacing)
+{
+    return (int)((freq - baseFreq) / spacing + 0.5f);
+}
+
 void cSampleRecorder::update()
 {
     if (waitForPreRollEnd == true)
@@ -363,10 +378,9 @@ void cSampleRecorder::start(uint32_t options)
         float radioSpacing = radio->getSpacing();
         if (radioSpacing > 0.0f)
         {
-            int maxChannel =
-              (int)((Radio::kMaxAudioFrequencyMHz - radioBottomFreq) / radioSpacing + 0.001f);
+            int maxChannel = calcMaxRadioChannel(radioBottomFreq, radioSpacing);
             int channel = clamp<int>(
-              (int)((recorderConfig.radioFreq - radioBottomFreq) / radioSpacing + 0.5f),
+              calcRadioChannel(recorderConfig.radioFreq, radioBottomFreq, radioSpacing),
               0,
               maxChannel);
             recorderConfig.radioFreq = radioBottomFreq + (channel * radioSpacing);
@@ -2338,10 +2352,7 @@ void cSampleRecorder::calcRadioFreqBarVal()
 {
     float radioBottomFreq = radio->getBaseFrequency();
     float radioSpacing = radio->getSpacing();
-    int maxChannel =
-      (radioSpacing > 0.0f)
-        ? (int)((Radio::kMaxAudioFrequencyMHz - radioBottomFreq) / radioSpacing + 0.001f)
-        : 0;
+    int maxChannel = calcMaxRadioChannel(radioBottomFreq, radioSpacing);
     float radioTopFreq = (maxChannel > 0) ? (radioBottomFreq + maxChannel * radioSpacing)
                                           : (float)Radio::kMaxAudioFrequencyMHz;
     radioFreqBarVal = clamp<int>(
@@ -2442,10 +2453,9 @@ void cSampleRecorder::changeRadioFreqBar(int16_t val)
             return;
         }
 
-        int maxChannel =
-          (int)((Radio::kMaxAudioFrequencyMHz - radioBottomFreq) / radioSpacing + 0.001f);
+        int maxChannel = calcMaxRadioChannel(radioBottomFreq, radioSpacing);
         int currentChannel =
-          (int)((recorderConfig.radioFreq - radioBottomFreq) / radioSpacing + 0.5f);
+          calcRadioChannel(recorderConfig.radioFreq, radioBottomFreq, radioSpacing);
         int newChannel = clamp<int>(currentChannel + val, 0, maxChannel);
         float newFreq = radioBottomFreq + (newChannel * radioSpacing);
 
