@@ -18,9 +18,8 @@ float AudioPlayMemory::wt2048Note[NOTE_LOOKUP_SIZE];
 bool AudioPlayMemory::isHeadroomEnabled = false;
 bool AudioPlayMemory::isSnapToZeroEnabled = false;
 
-// The tune is limited against the note that starts, not against the one before it, and
-// setGlide() gets its note from the audio engine, so a note plus the tune can lie outside
-// the note table.
+// Keep note + tune lookups inside the note table across note-on, glide, tune, and fine tune
+// paths, computing in int before clamping so sums >= 128 do not wrap in int8_t.
 static int tunedNoteIdx(int note, int tune)
 {
     return clamp<int>(note + tune, MIN_NOTE, MAX_NOTE - 1);
@@ -600,20 +599,18 @@ void AudioPlayMemory::setFineTune(int8_t value, int8_t currentNote)
     float localFinetunePitchControl = finetunePitchControl;
     const float* localNoteTable =
       (mtProject.instrument[currentInstrIdx].playMode == playModeWavetable) ? wt_notes : notes;
-    // The note passed in is not the one the tune was limited against at note-on, so the sum can
-    // lie outside the note table.
-    int8_t tunedNoteIdx = clamp<int>(currentNote + currentTune, MIN_NOTE, MAX_NOTE - 1);
+    int noteAndTuneIdx = tunedNoteIdx(currentNote, currentTune);
 
     localPitchControl -= localFinetunePitchControl;
 
     if (value >= 0)
     {
-        bool isNotExceedUpperNoteRange = ((tunedNoteIdx + 1) < MAX_NOTE);
+        bool isNotExceedUpperNoteRange = ((noteAndTuneIdx + 1) < MAX_NOTE);
 
         if (isNotExceedUpperNoteRange)
         {
-            float maxFinetuneShiftPitch = localNoteTable[tunedNoteIdx + 1];
-            float currentNotePitch = localNoteTable[tunedNoteIdx];
+            float maxFinetuneShiftPitch = localNoteTable[noteAndTuneIdx + 1];
+            float currentNotePitch = localNoteTable[noteAndTuneIdx];
 
             localFinetunePitchControl =
               value * ((maxFinetuneShiftPitch - currentNotePitch) / MAX_INSTRUMENT_FINETUNE);
@@ -623,12 +620,12 @@ void AudioPlayMemory::setFineTune(int8_t value, int8_t currentNote)
     }
     else
     {
-        bool isNotExceedLowerNoteRange = ((tunedNoteIdx - 1) >= MIN_NOTE);
+        bool isNotExceedLowerNoteRange = ((noteAndTuneIdx - 1) >= MIN_NOTE);
 
         if (isNotExceedLowerNoteRange)
         {
-            float maxFinetuneShiftPitch = localNoteTable[tunedNoteIdx - 1];
-            float currentNotePitch = localNoteTable[tunedNoteIdx];
+            float maxFinetuneShiftPitch = localNoteTable[noteAndTuneIdx - 1];
+            float currentNotePitch = localNoteTable[noteAndTuneIdx];
 
             localFinetunePitchControl =
               (-value) * ((maxFinetuneShiftPitch - currentNotePitch) / MAX_INSTRUMENT_FINETUNE);
@@ -691,20 +688,17 @@ std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> AudioPlayMemory::calculateGra
   uint32_t sampleLength)
 {
     // An empty instrument has no sample to measure the grain against.
-    uint16_t granularLength =
-      sampleLength > 0
-        ? ((uint32_t)((uint32_t)grainLength * (uint32_t)std::numeric_limits<uint16_t>::max())) /
-            sampleLength
-        : 0;
-
+    // Keep the quotient in uint32_t before clamping so grainLength > sampleLength (e.g. a sample
+    // shorter than MIN_GRANULAR_LENGTH) saturates at uint16_t::max() instead of wrapping.
     // The loop points lie one unit inside the zone on either side. A zone of fewer than four
     // units, which is all that a short grain of a long sample comes to, leaves a loop without
     // length or with its points swapped.
-    constexpr uint16_t kMinGranularLength = 4;
-    if (granularLength < kMinGranularLength)
-    {
-        granularLength = kMinGranularLength;
-    }
+    constexpr uint32_t kMinGranularLength = 4;
+    constexpr uint32_t kMaxGranularLength = std::numeric_limits<uint16_t>::max();
+    uint32_t rawGranularLength =
+      sampleLength > 0 ? ((uint32_t)grainLength * kMaxGranularLength) / sampleLength : 0;
+    uint16_t granularLength =
+      (uint16_t)clamp<uint32_t>(rawGranularLength, kMinGranularLength, kMaxGranularLength);
 
     int upperZoneLength = granularLength / 2 + (granularLength / 2 - std::min((int)granularPosition,
                                                                               granularLength / 2));
@@ -913,11 +907,7 @@ void AudioPlayMemory::setTune(int8_t value, int8_t currentNote)
 
     float localPitchControl = pitchControl;
 
-    int8_t lastNoteAndTuneIdx = currentNote + currentTune;
-    if (lastNoteAndTuneIdx < 0)
-        lastNoteAndTuneIdx = 0;
-    else if (lastNoteAndTuneIdx >= MAX_NOTE)
-        lastNoteAndTuneIdx = MAX_NOTE - 1;
+    int lastNoteAndTuneIdx = tunedNoteIdx(currentNote, currentTune);
 
     const float* local_notes = (localPlaymode != playModeWavetable) ? notes : wt_notes;
 
@@ -1212,14 +1202,14 @@ void AudioPlayMemory::setStartPitch(uint8_t note)
         if ((lastNote >= 0) && (currentGlide != 0))
             pitchControl = (float)wt_notes[tunedNoteIdx(lastNote, currentTune)];
         else
-            pitchControl = (float)wt_notes[note + currentTune];
+            pitchControl = (float)wt_notes[tunedNoteIdx(note, currentTune)];
     }
     else
     {
         if ((lastNote >= 0) && (currentGlide != 0))
             pitchControl = (float)notes[tunedNoteIdx(lastNote, currentTune)];
         else
-            pitchControl = (float)notes[note + currentTune];
+            pitchControl = (float)notes[tunedNoteIdx(note, currentTune)];
     }
 }
 void AudioPlayMemory::applyFinetuneOnPitch(uint8_t note)
@@ -1295,7 +1285,7 @@ void AudioPlayMemory::calculateGlidePitch(uint8_t note)
         {
             constrainsInSamples.pitchSmoothing = (uint32_t)((float)currentGlide * 44.1);
 
-            float localPitch1 = (float)wt_notes[note + currentTune];
+            float localPitch1 = (float)wt_notes[tunedNoteIdx(note, currentTune)];
             float localPitch2 = (float)wt_notes[tunedNoteIdx(lastNote, currentTune)];
             if ((lastNote >= 0) && (lastNote != note))
                 pitchSmoothingControl =
@@ -1315,7 +1305,7 @@ void AudioPlayMemory::calculateGlidePitch(uint8_t note)
         {
             constrainsInSamples.pitchSmoothing = (uint32_t)((float)currentGlide * 44.1);
 
-            float localPitch1 = (float)notes[note + currentTune];
+            float localPitch1 = (float)notes[tunedNoteIdx(note, currentTune)];
             float localPitch2 = (float)notes[tunedNoteIdx(lastNote, currentTune)];
             if ((lastNote >= 0) && (lastNote != note))
                 pitchSmoothingControl =
